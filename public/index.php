@@ -13,7 +13,7 @@ try {
     $stmt = $pdo->query('SELECT id, text, audio_path, created_at FROM messages ORDER BY created_at DESC, id DESC');
     $messages = $stmt->fetchAll();
 } catch (Throwable $e) {
-    $errorMessage = 'Не удалось загрузить сообщения из БД.';
+    $errorMessage = 'Не удалось загрузить список сообщений.';
 }
 
 function e(?string $value): string
@@ -24,235 +24,334 @@ function e(?string $value): string
 <!doctype html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Транскрибация сообщений</title>
-    <style>
-        :root {
-            --bg: #f3f4f6;
-            --surface: #ffffff;
-            --text: #111827;
-            --muted: #6b7280;
-            --border: #e5e7eb;
-            --primary: #2563eb;
-            --primary-hover: #1d4ed8;
-            --success: #047857;
-            --danger: #b91c1c;
-        }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>AI Voice Tutor</title>
+  <style>
+    :root {
+      --bg: #f1f5f9;
+      --panel: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --primary: #16a34a;
+      --primary-dark: #15803d;
+      --danger: #dc2626;
+      --disabled: #cbd5e1;
+      --ring: rgba(22, 163, 74, 0.35);
+      --border: #e2e8f0;
+    }
 
-        * { box-sizing: border-box; }
+    * { box-sizing: border-box; }
 
-        body {
-            margin: 0;
-            font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            padding: 24px;
-        }
+    body {
+      margin: 0;
+      min-height: 100svh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 20px;
+    }
 
-        .container {
-            max-width: 1100px;
-            margin: 0 auto;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
-            overflow: hidden;
-        }
+    .layout {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: grid;
+      gap: 18px;
+    }
 
-        .header {
-            padding: 20px 24px;
-            border-bottom: 1px solid var(--border);
-        }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
+    }
 
-        .header h1 {
-            margin: 0;
-            font-size: 1.4rem;
-        }
+    h1 { margin: 0 0 8px; font-size: 1.35rem; }
+    h2 { margin: 0 0 12px; font-size: 1.1rem; }
 
-        .header p {
-            margin: 6px 0 0;
-            color: var(--muted);
-        }
+    p {
+      margin: 0 0 16px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
 
-        .table-wrapper {
-            overflow-x: auto;
-        }
+    .status {
+      margin: 0 0 16px;
+      font-size: 1rem;
+      font-weight: 600;
+      min-height: 1.5rem;
+    }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            min-width: 920px;
-        }
+    .controls {
+      display: grid;
+      gap: 12px;
+      max-width: 420px;
+    }
 
-        th, td {
-            padding: 14px 16px;
-            border-bottom: 1px solid var(--border);
-            text-align: left;
-            vertical-align: top;
-        }
+    button {
+      border: none;
+      border-radius: 12px;
+      font-size: 0.96rem;
+      font-weight: 700;
+      color: white;
+      padding: 10px 14px;
+      cursor: pointer;
+    }
 
-        th {
-            font-size: 0.83rem;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-            color: var(--muted);
-            background: #f9fafb;
-        }
+    button:focus-visible {
+      outline: 3px solid var(--ring);
+      outline-offset: 2px;
+    }
 
-        .text-cell {
-            max-width: 460px;
-            white-space: pre-wrap;
-            line-height: 1.45;
-        }
+    #startBtn,
+    .btn-transcribe {
+      background: var(--primary);
+    }
 
-        .placeholder {
-            color: var(--muted);
-            font-style: italic;
-        }
+    #startBtn:hover,
+    .btn-transcribe:hover:not(:disabled) {
+      background: var(--primary-dark);
+    }
 
-        .status {
-            font-size: 0.87rem;
-            margin-top: 6px;
-            color: var(--muted);
-        }
+    #stopBtn { background: var(--danger); }
 
-        .status.success { color: var(--success); }
-        .status.error { color: var(--danger); }
+    button:disabled {
+      background: var(--disabled) !important;
+      color: #475569;
+      cursor: not-allowed;
+    }
 
-        button {
-            border: 0;
-            background: var(--primary);
-            color: #fff;
-            border-radius: 10px;
-            padding: 9px 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: .15s ease;
-        }
+    .hint {
+      margin-top: 12px;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
 
-        button:hover:not(:disabled) { background: var(--primary-hover); }
+    .error-box {
+      margin-bottom: 12px;
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
 
-        button:disabled {
-            opacity: .5;
-            cursor: not-allowed;
-        }
+    .table-wrap { overflow-x: auto; }
 
-        .error-box {
-            margin: 20px 24px;
-            background: #fef2f2;
-            color: var(--danger);
-            border: 1px solid #fecaca;
-            border-radius: 10px;
-            padding: 12px 14px;
-        }
-    </style>
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 900px;
+    }
+
+    th, td {
+      border-bottom: 1px solid var(--border);
+      padding: 12px;
+      text-align: left;
+      vertical-align: top;
+      font-size: 0.95rem;
+    }
+
+    th {
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-size: 0.8rem;
+      color: var(--muted);
+      background: #f8fafc;
+    }
+
+    .placeholder {
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    .text-cell {
+      max-width: 470px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+
+    .row-status {
+      margin-top: 6px;
+      font-size: 0.83rem;
+      color: var(--muted);
+    }
+
+    .row-status.success { color: #047857; }
+    .row-status.error { color: #b91c1c; }
+  </style>
 </head>
 <body>
-<div class="container">
-    <div class="header">
-        <h1>Сообщения и транскрибация</h1>
-        <p>Нажмите «Транскрибировать», чтобы отправить аудио в Gemini 1.5 Flash.</p>
-    </div>
+  <main class="layout">
+    <section class="card">
+      <h1>AI Voice Tutor</h1>
+      <p>Запишите ответ на финтех-интервью. Загрузка аудио работает через <code>/api/upload_audio.php</code>.</p>
 
-    <?php if ($errorMessage !== null): ?>
+      <div id="status" class="status" aria-live="polite">Ready</div>
+
+      <div class="controls">
+        <button id="startBtn" type="button">Start speaking</button>
+        <button id="stopBtn" type="button" disabled>Stop recording</button>
+      </div>
+
+      <div class="hint">Microphone access requires HTTPS (or localhost in development).</div>
+    </section>
+
+    <section class="card">
+      <h2>Сообщения и транскрибация</h2>
+      <p>Кнопка «Транскрибировать» активна только для записей без текста.</p>
+
+      <?php if ($errorMessage !== null): ?>
         <div class="error-box"><?= e($errorMessage) ?></div>
-    <?php endif; ?>
+      <?php endif; ?>
 
-    <div class="table-wrapper">
+      <div class="table-wrap">
         <table>
-            <thead>
-                <tr>
-                    <th>Дата</th>
-                    <th>Аудио</th>
-                    <th>Текст</th>
-                    <th>Действие</th>
-                </tr>
-            </thead>
-            <tbody>
-            <?php foreach ($messages as $row): ?>
-                <?php
-                    $id = (int)$row['id'];
-                    $hasText = trim((string)($row['text'] ?? '')) !== '';
-                ?>
-                <tr data-id="<?= $id ?>">
-                    <td><?= e((string)$row['created_at']) ?></td>
-                    <td>
-                        <?php if (!empty($row['audio_path'])): ?>
-                            <audio controls preload="none" src="<?= e((string)$row['audio_path']) ?>"></audio>
-                        <?php else: ?>
-                            <span class="placeholder">Нет аудио</span>
-                        <?php endif; ?>
-                    </td>
-                    <td class="text-cell" data-text-cell>
-                        <?php if ($hasText): ?>
-                            <?= nl2br(e((string)$row['text'])) ?>
-                        <?php else: ?>
-                            <span class="placeholder">Текст пока отсутствует</span>
-                        <?php endif; ?>
-                        <div class="status" data-status></div>
-                    </td>
-                    <td>
-                        <button
-                            data-transcribe-btn
-                            data-id="<?= $id ?>"
-                            <?= $hasText ? 'disabled' : '' ?>
-                        >Транскрибировать</button>
-                    </td>
-                </tr>
-            <?php endforeach; ?>
-            </tbody>
+          <thead>
+          <tr>
+            <th>Дата</th>
+            <th>Аудио</th>
+            <th>Текст</th>
+            <th>Действие</th>
+          </tr>
+          </thead>
+          <tbody>
+          <?php foreach ($messages as $row): ?>
+            <?php
+            $id = (int)$row['id'];
+            $hasText = trim((string)($row['text'] ?? '')) !== '';
+            ?>
+            <tr>
+              <td><?= e((string)$row['created_at']) ?></td>
+              <td>
+                <?php if (!empty($row['audio_path'])): ?>
+                  <audio controls preload="none" src="<?= e((string)$row['audio_path']) ?>"></audio>
+                <?php else: ?>
+                  <span class="placeholder">Нет аудио</span>
+                <?php endif; ?>
+              </td>
+              <td class="text-cell" data-text-cell>
+                <?php if ($hasText): ?>
+                  <?= nl2br(e((string)$row['text'])) ?>
+                <?php else: ?>
+                  <span class="placeholder">Текст пока отсутствует</span>
+                <?php endif; ?>
+                <div class="row-status" data-row-status></div>
+              </td>
+              <td>
+                <button
+                  type="button"
+                  class="btn-transcribe"
+                  data-transcribe-btn
+                  data-id="<?= $id ?>"
+                  <?= $hasText ? 'disabled' : '' ?>
+                >Транскрибировать</button>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+          </tbody>
         </table>
-    </div>
-</div>
+      </div>
+    </section>
+  </main>
 
-<script>
-document.querySelectorAll('[data-transcribe-btn]').forEach((button) => {
-    button.addEventListener('click', async () => {
-        const row = button.closest('tr');
-        const textCell = row.querySelector('[data-text-cell]');
-        const statusNode = row.querySelector('[data-status]');
-        const messageId = button.dataset.id;
+  <script src="app.js"></script>
+  <script>
+    (() => {
+      const endpointCandidates = [
+        '/api/transcribe.php',
+        '../api/transcribe.php',
+        'api/transcribe.php'
+      ];
 
-        if (!messageId) return;
+      const parseResponseBody = async (response) => {
+        const rawText = await response.text();
 
-        button.disabled = true;
-        textCell.innerHTML = '<span class="placeholder">Processing...</span>';
-        statusNode.textContent = '';
-        statusNode.className = 'status';
+        if (!rawText) {
+          return { rawText: '', json: null };
+        }
 
         try {
-            const response = await fetch('transcribe.php', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ id: Number(messageId) })
+          return { rawText, json: JSON.parse(rawText) };
+        } catch (_) {
+          return { rawText, json: null };
+        }
+      };
+
+      const requestTranscription = async (messageId) => {
+        let lastError = null;
+
+        for (const endpoint of endpointCandidates) {
+          try {
+            const response = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: Number(messageId) })
             });
 
-            const data = await response.json();
+            const { rawText, json } = await parseResponseBody(response);
 
-            if (!response.ok || data.status !== 'success') {
-                throw new Error(data.message || 'Транскрибация не удалась.');
+            if (response.ok && json && json.status === 'success') {
+              return json;
             }
 
-            const safeText = (data.text || '').replace(/[&<>"']/g, (ch) => ({
-                '&': '&amp;',
-                '<': '&lt;',
-                '>': '&gt;',
-                '"': '&quot;',
-                "'": '&#039;'
-            })[ch]);
+            if (response.status === 404) {
+              continue;
+            }
 
+            const message = json?.message || response.statusText || 'Transcription failed';
+            const preview = !json && rawText ? ` | ${rawText.slice(0, 120)}` : '';
+            throw new Error(`${message}${preview}`);
+          } catch (error) {
+            lastError = error;
+            break;
+          }
+        }
+
+        if (lastError) {
+          throw lastError;
+        }
+
+        throw new Error('Transcription endpoint not found (/api/transcribe.php).');
+      };
+
+      const escapeHtml = (value) => value.replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      })[ch]);
+
+      document.querySelectorAll('[data-transcribe-btn]').forEach((button) => {
+        button.addEventListener('click', async () => {
+          const row = button.closest('tr');
+          const textCell = row.querySelector('[data-text-cell]');
+          const statusNode = row.querySelector('[data-row-status]');
+          const messageId = button.dataset.id;
+
+          button.disabled = true;
+          textCell.innerHTML = '<span class="placeholder">Processing...</span>';
+          statusNode.textContent = '';
+          statusNode.className = 'row-status';
+
+          try {
+            const payload = await requestTranscription(messageId);
+            const safeText = escapeHtml(String(payload.text || ''));
             textCell.innerHTML = safeText.replace(/\n/g, '<br>');
             statusNode.textContent = 'Готово';
-            statusNode.className = 'status success';
-        } catch (error) {
+            statusNode.className = 'row-status success';
+          } catch (error) {
             textCell.innerHTML = '<span class="placeholder">Текст пока отсутствует</span>';
-            statusNode.textContent = error.message || 'Ошибка при обработке';
-            statusNode.className = 'status error';
+            statusNode.textContent = error.message || 'Ошибка транскрибации';
+            statusNode.className = 'row-status error';
             button.disabled = false;
-        }
-    });
-});
-</script>
+          }
+        });
+      });
+    })();
+  </script>
 </body>
 </html>

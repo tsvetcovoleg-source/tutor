@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 header('Content-Type: application/json; charset=utf-8');
 
-$config = require __DIR__ . '/../api/config.php';
-require __DIR__ . '/../api/db.php';
+$config = require __DIR__ . '/config.php';
+require __DIR__ . '/db.php';
 
 $debug = (bool)($config['debug'] ?? false);
 
@@ -31,7 +31,7 @@ function fail(string $message, int $statusCode, bool $debug, array $context = []
     respond($payload, $statusCode);
 }
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     fail('Method not allowed', 405, $debug);
 }
 
