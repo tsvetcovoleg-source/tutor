@@ -112,10 +112,31 @@ if ($projectRoot === false) {
 }
 
 $relativePath = ltrim($audioPath, '/\\');
-$absoluteAudioPath = realpath($projectRoot . DIRECTORY_SEPARATOR . $relativePath);
+$pathCandidates = [
+    $projectRoot . DIRECTORY_SEPARATOR . $relativePath,
+    $projectRoot . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . $relativePath,
+];
 
-if ($absoluteAudioPath === false || strncmp($absoluteAudioPath, $projectRoot, strlen($projectRoot)) !== 0) {
-    fail('Audio file path is invalid', 400, $debug, ['audio_path' => $audioPath], $trace, 'path_audio_validation');
+$absoluteAudioPath = false;
+foreach ($pathCandidates as $candidate) {
+    $resolved = realpath($candidate);
+    if ($resolved === false) {
+        continue;
+    }
+
+    if (strncmp($resolved, $projectRoot, strlen($projectRoot)) !== 0) {
+        continue;
+    }
+
+    $absoluteAudioPath = $resolved;
+    break;
+}
+
+if ($absoluteAudioPath === false) {
+    fail('Audio file path is invalid', 400, $debug, [
+        'audio_path' => $audioPath,
+        'tried_paths' => $pathCandidates,
+    ], $trace, 'path_audio_validation');
 }
 add_trace($trace, 'path_audio_validation', 'Audio path resolved', ['resolved_path' => $absoluteAudioPath]);
 
