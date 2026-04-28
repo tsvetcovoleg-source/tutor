@@ -181,6 +181,27 @@ function e(?string $value): string
 
     .row-status.success { color: #047857; }
     .row-status.error { color: #b91c1c; }
+
+    .log-box {
+      margin-top: 10px;
+      border: 1px dashed var(--border);
+      background: #f8fafc;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 0.82rem;
+      max-height: 220px;
+      overflow: auto;
+      line-height: 1.4;
+    }
+
+    .log-box ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .log-box li + li {
+      margin-top: 6px;
+    }
   </style>
 </head>
 <body>
@@ -197,6 +218,12 @@ function e(?string $value): string
       </div>
 
       <div class="hint">Microphone access requires HTTPS (or localhost in development).</div>
+      <div id="globalLog" class="log-box" aria-live="polite">
+        <strong>Журнал действий:</strong>
+        <ul id="globalLogList">
+          <li>Ожидание действий...</li>
+        </ul>
+      </div>
     </section>
 
     <section class="card">
@@ -239,6 +266,12 @@ function e(?string $value): string
                   <span class="placeholder">Текст пока отсутствует</span>
                 <?php endif; ?>
                 <div class="row-status" data-row-status></div>
+                <div class="log-box" data-row-log>
+                  <strong>Лог транскрибации:</strong>
+                  <ul>
+                    <li>Пока пусто</li>
+                  </ul>
+                </div>
               </td>
               <td>
                 <button
@@ -265,6 +298,21 @@ function e(?string $value): string
         '../api/transcribe.php',
         'api/transcribe.php'
       ];
+      const globalLogList = document.getElementById('globalLogList');
+
+      const nowLabel = () => new Date().toLocaleString('ru-RU', { hour12: false });
+
+      const appendGlobalLog = (message) => {
+        if (!globalLogList) return;
+        if (globalLogList.children.length === 1 && globalLogList.children[0].textContent === 'Ожидание действий...') {
+          globalLogList.innerHTML = '';
+        }
+        const item = document.createElement('li');
+        item.textContent = `[${nowLabel()}] ${message}`;
+        globalLogList.prepend(item);
+      };
+
+      window.appLog = appendGlobalLog;
 
       const parseResponseBody = async (response) => {
         const rawText = await response.text();
@@ -281,6 +329,7 @@ function e(?string $value): string
       };
 
       const requestTranscription = async (messageId) => {
+        appendGlobalLog(`Старт транскрибации для id=${messageId}`);
         let lastError = null;
 
         for (const endpoint of endpointCandidates) {
@@ -294,6 +343,7 @@ function e(?string $value): string
             const { rawText, json } = await parseResponseBody(response);
 
             if (response.ok && json && json.status === 'success') {
+              appendGlobalLog(`Транскрибация id=${messageId} завершена успешно через ${endpoint}`);
               return json;
             }
 
@@ -305,6 +355,7 @@ function e(?string $value): string
             const preview = !json && rawText ? ` | ${rawText.slice(0, 120)}` : '';
             throw new Error(`${message}${preview}`);
           } catch (error) {
+            appendGlobalLog(`Ошибка транскрибации id=${messageId}: ${error.message || error}`);
             lastError = error;
             break;
           }
@@ -325,17 +376,40 @@ function e(?string $value): string
         "'": '&#039;'
       })[ch]);
 
+      const renderTrace = (container, trace) => {
+        if (!container) return;
+        const list = document.createElement('ul');
+        if (!Array.isArray(trace) || trace.length === 0) {
+          const item = document.createElement('li');
+          item.textContent = 'Нет деталей по шагам.';
+          list.appendChild(item);
+        } else {
+          trace.forEach((step) => {
+            const item = document.createElement('li');
+            const stage = step?.stage ? `[${step.stage}] ` : '';
+            const message = step?.message || 'Без сообщения';
+            const time = step?.time ? `${step.time} — ` : '';
+            item.textContent = `${time}${stage}${message}`;
+            list.appendChild(item);
+          });
+        }
+        container.innerHTML = '';
+        container.appendChild(list);
+      };
+
       document.querySelectorAll('[data-transcribe-btn]').forEach((button) => {
         button.addEventListener('click', async () => {
           const row = button.closest('tr');
           const textCell = row.querySelector('[data-text-cell]');
           const statusNode = row.querySelector('[data-row-status]');
+          const rowLogBox = row.querySelector('[data-row-log]');
           const messageId = button.dataset.id;
 
           button.disabled = true;
           textCell.innerHTML = '<span class="placeholder">Processing...</span>';
           statusNode.textContent = '';
           statusNode.className = 'row-status';
+          renderTrace(rowLogBox, [{ stage: 'frontend', message: 'Запрос отправлен, ждём ответ...' }]);
 
           try {
             const payload = await requestTranscription(messageId);
@@ -343,11 +417,14 @@ function e(?string $value): string
             textCell.innerHTML = safeText.replace(/\n/g, '<br>');
             statusNode.textContent = 'Готово';
             statusNode.className = 'row-status success';
+            renderTrace(rowLogBox, payload.trace || []);
+            appendGlobalLog(`Получен текст длиной ${safeText.length} символов для id=${messageId}`);
           } catch (error) {
             textCell.innerHTML = '<span class="placeholder">Текст пока отсутствует</span>';
             statusNode.textContent = error.message || 'Ошибка транскрибации';
             statusNode.className = 'row-status error';
             button.disabled = false;
+            renderTrace(rowLogBox, [{ stage: 'frontend_error', message: error.message || 'Ошибка без текста' }]);
           }
         });
       });
