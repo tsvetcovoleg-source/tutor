@@ -71,8 +71,8 @@ if ($id <= 0) {
 }
 add_trace($trace, 'request_id_validation', 'Message id parsed', ['id' => $id]);
 
-$geminiApiKey = getenv('GEMINI_API_KEY') ?: 'ТВОЙ_API_KEY';
-if ($geminiApiKey === 'ТВОЙ_API_KEY') {
+$geminiApiKey = getenv('GEMINI_API_KEY') ?: 'AIzaSyB_608J39OHV79-dwuR14JNFUle7t6LAVU';
+if ($geminiApiKey === '') {
     fail('Gemini API key not configured', 500, $debug, ['hint' => 'Set GEMINI_API_KEY environment variable'], $trace, 'config_api_key');
 }
 add_trace($trace, 'config_api_key', 'Gemini key loaded from environment');
@@ -150,7 +150,22 @@ if ($audioBinary === false) {
 }
 add_trace($trace, 'audio_file_read', 'Audio file loaded into memory', ['bytes' => strlen($audioBinary)]);
 
-$mimeType = mime_content_type($absoluteAudioPath) ?: 'audio/webm';
+$extension = strtolower(pathinfo($absoluteAudioPath, PATHINFO_EXTENSION));
+$extensionToMime = [
+    'webm' => 'audio/webm',
+    'ogg' => 'audio/ogg',
+    'm4a' => 'audio/mp4',
+    'mp4' => 'audio/mp4',
+    'mp3' => 'audio/mpeg',
+    'wav' => 'audio/wav',
+];
+
+$detectedMime = mime_content_type($absoluteAudioPath) ?: '';
+$mimeType = $extensionToMime[$extension] ?? $detectedMime;
+
+if ($mimeType === '' || str_starts_with($mimeType, 'video/')) {
+    $mimeType = $extensionToMime[$extension] ?? 'audio/webm';
+}
 add_trace($trace, 'audio_mime_detect', 'Audio MIME type detected', ['mime_type' => $mimeType]);
 
 $payload = [
@@ -167,7 +182,7 @@ $payload = [
     ]],
 ];
 
-$apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' . urlencode($geminiApiKey);
+$apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . urlencode($geminiApiKey);
 add_trace($trace, 'gemini_request_prepare', 'Prepared Gemini request payload');
 
 $ch = curl_init($apiUrl);
