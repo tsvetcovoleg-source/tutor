@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 // Copy this file and update values for your shared hosting environment.
 return [
     'db_host' => '127.0.0.1',
