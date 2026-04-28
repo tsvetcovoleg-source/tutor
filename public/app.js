@@ -94,7 +94,7 @@
       return null;
     }
 
-    const serverMessage = json?.message || 'Upload failed';
+    const serverMessage = json?.message || response.statusText || 'Upload failed';
     const stage = json?.stage ? ` (stage: ${json.stage})` : '';
     const debugMessage = json?.debug?.exception_message ? ` | ${json.debug.exception_message}` : '';
     const textPreview = !json && rawText ? ` | ${rawText.slice(0, 120)}` : '';

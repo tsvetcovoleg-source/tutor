@@ -4,17 +4,20 @@ declare(strict_types=1);
 
 header('Content-Type: application/json; charset=utf-8');
 
+$debugEnabled = true;
 $config = require __DIR__ . '/config.php';
-require __DIR__ . '/db.php';
-
 $debugEnabled = (bool)($config['debug'] ?? false);
+require __DIR__ . '/db.php';
 
 /**
  * @param array<string, mixed> $payload
  */
 function respond_json(array $payload, int $statusCode = 200): void
 {
-    http_response_code($statusCode);
+    if (!headers_sent()) {
+        http_response_code($statusCode);
+        header('Content-Type: application/json; charset=utf-8');
+    }
     echo json_encode($payload, JSON_UNESCAPED_UNICODE);
     exit;
 }
@@ -40,6 +43,56 @@ function fail_with_stage(string $stage, string $message, int $statusCode, bool $
 
     respond_json($response, $statusCode);
 }
+
+set_error_handler(static function (int $severity, string $message, string $file, int $line): bool {
+    throw new ErrorException($message, 0, $severity, $file, $line);
+});
+
+set_exception_handler(static function (Throwable $e) use (&$debugEnabled): void {
+    fail_with_stage('unhandled_exception', 'Internal server error', 500, $debugEnabled, [
+        'exception_class' => get_class($e),
+        'exception_code' => (string)$e->getCode(),
+        'exception_message' => $e->getMessage(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine(),
+    ]);
+});
+
+register_shutdown_function(static function () use (&$debugEnabled): void {
+    $error = error_get_last();
+    if ($error === null) {
+        return;
+    }
+
+    $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR];
+    if (!in_array($error['type'] ?? 0, $fatalTypes, true)) {
+        return;
+    }
+
+    if (headers_sent()) {
+        return;
+    }
+
+    http_response_code(500);
+    header('Content-Type: application/json; charset=utf-8');
+
+    $payload = [
+        'status' => 'error',
+        'stage' => 'fatal_shutdown',
+        'message' => 'Internal server error',
+    ];
+
+    if ($debugEnabled) {
+        $payload['debug'] = [
+            'type' => $error['type'] ?? null,
+            'message' => $error['message'] ?? null,
+            'file' => $error['file'] ?? null,
+            'line' => $error['line'] ?? null,
+        ];
+    }
+
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+});
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     fail_with_stage('request_method', 'Method not allowed', 405, $debugEnabled, [
@@ -105,6 +158,12 @@ $uploadDir = realpath(__DIR__ . '/../public/audio/uploads');
 if ($uploadDir === false) {
     fail_with_stage('upload_directory', 'Upload directory not found', 500, $debugEnabled, [
         'resolved_path' => __DIR__ . '/../public/audio/uploads',
+    ]);
+}
+
+if (!is_writable($uploadDir)) {
+    fail_with_stage('upload_directory_permissions', 'Upload directory is not writable', 500, $debugEnabled, [
+        'upload_dir' => $uploadDir,
     ]);
 }
 
