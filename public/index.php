@@ -7,11 +7,27 @@ require __DIR__ . '/../api/db.php';
 
 $errorMessage = null;
 $messages = [];
+$currentPage = max(1, (int)($_GET['page'] ?? 1));
+$perPage = 5;
+$totalMessages = 0;
+$totalPages = 1;
 
 try {
     $pdo = db_connect($config);
-    $stmt = $pdo->query('SELECT id, question_text, text, created_at FROM messages ORDER BY created_at ASC, id ASC');
+    $countStmt = $pdo->query('SELECT COUNT(*) FROM messages');
+    $totalMessages = (int)$countStmt->fetchColumn();
+    $totalPages = max(1, (int)ceil($totalMessages / $perPage));
+    if ($currentPage > $totalPages) {
+        $currentPage = $totalPages;
+    }
+    $offset = ($currentPage - 1) * $perPage;
+
+    $stmt = $pdo->prepare('SELECT id, question_text, text, created_at FROM messages ORDER BY created_at DESC, id DESC LIMIT :limit OFFSET :offset');
+    $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
+    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $stmt->execute();
     $messages = $stmt->fetchAll();
+    $messages = array_reverse($messages);
 } catch (Throwable $e) {
     $errorMessage = 'Не удалось загрузить список сообщений.';
 }
@@ -86,18 +102,24 @@ function e(?string $value): string
 
     .controls {
       display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 12px;
-      max-width: 420px;
     }
 
     button {
-      border: none;
-      border-radius: 12px;
-      font-size: 0.96rem;
+      border: 1px solid transparent;
+      border-radius: 14px;
+      font-size: 0.95rem;
       font-weight: 700;
       color: white;
-      padding: 10px 14px;
+      padding: 12px 14px;
       cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 10px 20px rgba(2, 132, 199, 0.12);
+      transition: transform .15s ease, box-shadow .15s ease, background .2s ease;
     }
 
     button:focus-visible {
@@ -106,18 +128,20 @@ function e(?string $value): string
     }
 
     #startBtn,
-    #generateQuestionBtn,
-    .btn-transcribe {
+    #generateQuestionBtn {
       background: var(--primary);
     }
 
     #startBtn:hover,
-    #generateQuestionBtn:hover:not(:disabled),
-    .btn-transcribe:hover:not(:disabled) {
+    #generateQuestionBtn:hover:not(:disabled) {
       background: var(--primary-dark);
+      transform: translateY(-1px);
     }
 
-    #stopBtn { background: var(--danger); }
+    #stopBtn {
+      background: var(--danger);
+      box-shadow: 0 10px 20px rgba(220, 38, 38, 0.2);
+    }
 
     button:disabled {
       background: var(--disabled) !important;
@@ -203,12 +227,52 @@ function e(?string $value): string
       justify-content: flex-end;
     }
 
+    .pagination {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .page-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 38px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: #0f172a;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .page-link.active {
+      background: #dbeafe;
+      border-color: #93c5fd;
+      color: #1d4ed8;
+    }
+
+    .bottom-panel {
+      position: sticky;
+      bottom: 0;
+      z-index: 2;
+      background: rgba(241, 245, 249, 0.85);
+      backdrop-filter: blur(4px);
+    }
+
+    .icon {
+      font-size: 1.1rem;
+      line-height: 1;
+    }
+
     @media (max-width: 700px) {
       body { padding: 12px; }
       .card { padding: 14px; }
       .text-cell { max-width: 100%; font-size: 0.92rem; }
       button { width: 100%; }
-      .controls { max-width: none; }
+      .controls { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -217,13 +281,6 @@ function e(?string $value): string
     <section class="card">
       <h1>AI Voice Tutor</h1>
       <div id="status" class="status" aria-live="polite">Ready</div>
-
-      <div class="controls">
-        <button id="startBtn" type="button">Start speaking</button>
-        <button id="stopBtn" type="button" disabled>Stop recording</button>
-        <button id="generateQuestionBtn" type="button">Сгенерировать следующий вопрос</button>
-      </div>
-
     </section>
 
     <section class="card">
@@ -250,19 +307,17 @@ function e(?string $value): string
                     echo '<span class="placeholder">Ответ пока отсутствует</span>';
                 }
               ?></div>
-              <div class="actions">
-                <button
-                  type="button"
-                  class="btn-transcribe"
-                  data-transcribe-btn
-                  data-id="<?= $id ?>"
-                  <?= $hasText ? 'disabled' : '' ?>
-                >Транскрибировать</button>
-              </div>
               <div class="row-status" data-row-status></div>
             </article>
           <?php endforeach; ?>
       </div>
+      <?php if ($totalPages > 1): ?>
+        <nav class="pagination" aria-label="Пагинация сообщений">
+          <?php for ($page = 1; $page <= $totalPages; $page++): ?>
+            <a class="page-link <?= $page === $currentPage ? 'active' : '' ?>" href="?page=<?= $page ?>"><?= $page ?></a>
+          <?php endfor; ?>
+        </nav>
+      <?php endif; ?>
       <div id="globalLog" class="log-box" aria-live="polite">
         <strong>Журнал действий:</strong>
         <ul id="globalLogList">
@@ -270,16 +325,19 @@ function e(?string $value): string
         </ul>
       </div>
     </section>
+
+    <section class="card bottom-panel">
+      <div class="controls">
+        <button id="startBtn" type="button"><span class="icon">🎙️</span><span>Начать запись</span></button>
+        <button id="stopBtn" type="button" disabled><span class="icon">⏹️</span><span>Остановить</span></button>
+        <button id="generateQuestionBtn" type="button"><span class="icon">✨</span><span>Новый вопрос</span></button>
+      </div>
+    </section>
   </main>
 
   <script src="app.js"></script>
   <script>
     (() => {
-      const endpointCandidates = [
-        '/api/transcribe.php',
-        '../api/transcribe.php',
-        'api/transcribe.php'
-      ];
       const globalLogList = document.getElementById('globalLogList');
 
       const generateBtn = document.getElementById('generateQuestionBtn');
@@ -318,47 +376,6 @@ function e(?string $value): string
         }
       };
 
-      const requestTranscription = async (messageId) => {
-        appendGlobalLog(`Старт транскрибации для id=${messageId}`);
-        let lastError = null;
-
-        for (const endpoint of endpointCandidates) {
-          try {
-            const response = await fetch(endpoint, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id: Number(messageId) })
-            });
-
-            const { rawText, json } = await parseResponseBody(response);
-
-            if (response.ok && json && json.status === 'success') {
-              appendGlobalLog(`Транскрибация id=${messageId} завершена успешно через ${endpoint}`);
-              return json;
-            }
-
-            if (response.status === 404) {
-              continue;
-            }
-
-            const message = json?.message || response.statusText || 'Transcription failed';
-            const preview = !json && rawText ? ` | ${rawText.slice(0, 120)}` : '';
-            throw new Error(`${message}${preview}`);
-          } catch (error) {
-            appendGlobalLog(`Ошибка транскрибации id=${messageId}: ${error.message || error}`);
-            lastError = error;
-            break;
-          }
-        }
-
-        if (lastError) {
-          throw lastError;
-        }
-
-        throw new Error('Transcription endpoint not found (/api/transcribe.php).');
-      };
-
-      
       const requestNextQuestion = async () => {
         let lastError = null;
         for (const endpoint of generateEndpointCandidates) {
@@ -381,14 +398,6 @@ function e(?string $value): string
         throw new Error('Generation endpoint not found (/api/generate_question.php).');
       };
 
-      const escapeHtml = (value) => value.replace(/[&<>"']/g, (ch) => ({
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#039;'
-      })[ch]);
-      
       if (generateBtn) {
         generateBtn.addEventListener('click', async () => {
           generateBtn.disabled = true;
@@ -407,33 +416,6 @@ function e(?string $value): string
         });
       }
 
-      document.querySelectorAll('[data-transcribe-btn]').forEach((button) => {
-        button.addEventListener('click', async () => {
-          const row = button.closest('.message-item');
-          const textCell = row.querySelector('[data-text-cell]');
-          const statusNode = row.querySelector('[data-row-status]');
-          const messageId = button.dataset.id;
-
-          button.disabled = true;
-          textCell.innerHTML = '<span class="placeholder">Processing...</span>';
-          statusNode.textContent = '';
-          statusNode.className = 'row-status';
-
-          try {
-            const payload = await requestTranscription(messageId);
-            const safeText = escapeHtml(String(payload.text || ''));
-            textCell.innerHTML = safeText.replace(/\n/g, '<br>');
-            statusNode.textContent = 'Готово';
-            statusNode.className = 'row-status success';
-            appendGlobalLog(`Получен текст длиной ${safeText.length} символов для id=${messageId}`);
-          } catch (error) {
-            textCell.innerHTML = '<span class="placeholder">Текст пока отсутствует</span>';
-            statusNode.textContent = error.message || 'Ошибка транскрибации';
-            statusNode.className = 'row-status error';
-            button.disabled = false;
-          }
-        });
-      });
     })();
   </script>
 </body>
