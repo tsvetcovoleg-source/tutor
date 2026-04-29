@@ -8,7 +8,7 @@
   let selectedMimeType = '';
   let stream = null;
 
-  const MAX_SECONDS = 120;
+  const MAX_SECONDS = 300;
   let autoStopTimer = null;
 
   // Different hosting setups may expose API under different paths.
