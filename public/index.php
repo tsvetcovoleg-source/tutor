@@ -395,6 +395,9 @@ function e(?string $value): string
           appendGlobalLog('Запрос на генерацию следующего вопроса отправлен.');
           try {
             const payload = await requestNextQuestion();
+            if (payload.prompt) {
+              appendGlobalLog('Промпт для Gemini: ' + String(payload.prompt));
+            }
             appendGlobalLog(`Вопрос сгенерирован (id=${payload.message_id}). Обновляем страницу.`);
             window.location.reload();
           } catch (error) {

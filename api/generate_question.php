@@ -112,4 +112,6 @@ respond([
     'message_id' => $messageId,
     'question' => $questionText,
     'raw' => $modelText,
+    'prompt' => $prompt,
+    'context' => $contextBlock,
 ]);
