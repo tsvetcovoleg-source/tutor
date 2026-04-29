@@ -6,6 +6,7 @@ header('Content-Type: application/json; charset=utf-8');
 
 $config = require __DIR__ . '/config.php';
 require __DIR__ . '/db.php';
+$prompts = require __DIR__ . '/prompts.php';
 
 function respond(array $payload, int $statusCode = 200): void
 {
@@ -53,69 +54,10 @@ if ($userAnswer === '') {
     respond(['status' => 'error', 'message' => 'Message text is empty'], 400);
 }
 
-$promptTemplate = <<<'PROMPT'
-You are a senior interviewer for a Credit Risk Business Lead role in an international fintech company.
-
-You will receive:
-
-1. Interview question
-2. Candidate answer
-
-Your task is to evaluate the candidate's answer.
-
-Evaluation criteria:
-
-1. English Quality
-   Evaluate grammar, vocabulary, fluency, and whether the answer sounds natural in a professional interview.
-
-2. Clarity & Structure
-   Evaluate whether the answer is clear, logically organized, easy to follow, and not too vague.
-
-3. Risk & Decision Thinking
-   Evaluate whether the candidate demonstrates credit risk logic, practical decision-making, risk-based judgment, and understanding of business trade-offs.
-
-4. Stakeholder Thinking
-   Evaluate whether the candidate considers product, business, risk, regulator, customer, or management perspectives where relevant.
-
-Scoring rules:
-
-* Give each criterion a score from 0 to 10.
-* Use one decimal if needed.
-* Calculate the overall score as the average of the four criteria.
-* Do not be too soft. Evaluate as a real fintech interviewer.
-* If the answer is too short or vague, reduce the score.
-
-Feedback rules:
-
-* Provide ONE общий комментарий (max 5 sentences).
-* Explain in simple, clear English.
-* Focus on how the answer can be improved to get a higher score.
-* Suggest what is missing (e.g., clearer structure, decision, risk logic, stakeholder view).
-* Do NOT rewrite the answer.
-* Do NOT provide a better answer.
-* Do NOT ask a new question.
-
-Output ONLY valid JSON in this format:
-
-{
-"english_quality": 0,
-"clarity_structure": 0,
-"risk_decision_thinking": 0,
-"stakeholder_thinking": 0,
-"overall_score": 0,
-"improvement_comment": "..."
+$promptTemplate = (string)($prompts['evaluate_answer'] ?? '');
+if ($promptTemplate === '') {
+    respond(['status' => 'error', 'message' => 'Prompt template not configured'], 500);
 }
-
-Interview question:
-"""
-{{QUESTION}}
-"""
-
-Candidate answer:
-"""
-{{ANSWER}}
-"""
-PROMPT;
 
 $prompt = str_replace(['{{QUESTION}}', '{{ANSWER}}'], [$questionText, $userAnswer], $promptTemplate);
 
