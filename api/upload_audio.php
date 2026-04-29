@@ -44,6 +44,46 @@ function fail_with_stage(string $stage, string $message, int $statusCode, bool $
     respond_json($response, $statusCode);
 }
 
+
+function try_auto_transcribe(int $messageId, bool $debugEnabled): array
+{
+    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['SERVER_PORT'] ?? '') === '443');
+    $scheme = $https ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? ($_SERVER['SERVER_NAME'] ?? 'localhost');
+    $endpoint = $scheme . '://' . $host . '/api/transcribe.php';
+
+    $ch = curl_init($endpoint);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+        CURLOPT_POSTFIELDS => json_encode(['id' => $messageId], JSON_UNESCAPED_UNICODE),
+        CURLOPT_TIMEOUT => 120,
+    ]);
+
+    $raw = curl_exec($ch);
+    $curlError = curl_error($ch);
+    $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($raw === false) {
+        return ['ok' => false, 'message' => 'curl_error: ' . $curlError, 'endpoint' => $endpoint];
+    }
+
+    $json = json_decode($raw, true);
+    if ($httpCode >= 400 || !is_array($json) || (($json['status'] ?? '') !== 'success')) {
+        return [
+            'ok' => false,
+            'message' => is_array($json) ? (($json['message'] ?? 'unknown error')) : 'invalid response',
+            'endpoint' => $endpoint,
+            'http_code' => $httpCode,
+            'raw' => $debugEnabled ? mb_substr($raw, 0, 500) : null,
+        ];
+    }
+
+    return ['ok' => true, 'endpoint' => $endpoint, 'text_length' => strlen((string)($json['text'] ?? ''))];
+}
+
 set_error_handler(static function (int $severity, string $message, string $file, int $line): bool {
     throw new ErrorException($message, 0, $severity, $file, $line);
 });
@@ -215,9 +255,12 @@ try {
     ]);
 }
 
+$autoTranscription = try_auto_transcribe($messageId, $debugEnabled);
+
 respond_json([
     'status' => 'success',
     'audio_path' => $audioPath,
     'message_id' => $messageId,
     'stage' => 'done',
+    'auto_transcription' => $autoTranscription,
 ]);
