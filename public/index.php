@@ -106,14 +106,12 @@ function e(?string $value): string
     }
 
     #startBtn,
-    #generateQuestionBtn,
-    .btn-transcribe {
+    #generateQuestionBtn {
       background: var(--primary);
     }
 
     #startBtn:hover,
-    #generateQuestionBtn:hover:not(:disabled),
-    .btn-transcribe:hover:not(:disabled) {
+    #generateQuestionBtn:hover:not(:disabled) {
       background: var(--primary-dark);
     }
 
@@ -250,15 +248,6 @@ function e(?string $value): string
                     echo '<span class="placeholder">Ответ пока отсутствует</span>';
                 }
               ?></div>
-              <div class="actions">
-                <button
-                  type="button"
-                  class="btn-transcribe"
-                  data-transcribe-btn
-                  data-id="<?= $id ?>"
-                  <?= $hasText ? 'disabled' : '' ?>
-                >Транскрибировать</button>
-              </div>
               <div class="row-status" data-row-status></div>
             </article>
           <?php endforeach; ?>
@@ -275,11 +264,6 @@ function e(?string $value): string
   <script src="app.js"></script>
   <script>
     (() => {
-      const endpointCandidates = [
-        '/api/transcribe.php',
-        '../api/transcribe.php',
-        'api/transcribe.php'
-      ];
       const globalLogList = document.getElementById('globalLogList');
 
       const generateBtn = document.getElementById('generateQuestionBtn');
@@ -318,47 +302,6 @@ function e(?string $value): string
         }
       };
 
-      const requestTranscription = async (messageId) => {
-        appendGlobalLog(`Старт транскрибации для id=${messageId}`);
-        let lastError = null;
-
-        for (const endpoint of endpointCandidates) {
-          try {
-            const response = await fetch(endpoint, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id: Number(messageId) })
-            });
-
-            const { rawText, json } = await parseResponseBody(response);
-
-            if (response.ok && json && json.status === 'success') {
-              appendGlobalLog(`Транскрибация id=${messageId} завершена успешно через ${endpoint}`);
-              return json;
-            }
-
-            if (response.status === 404) {
-              continue;
-            }
-
-            const message = json?.message || response.statusText || 'Transcription failed';
-            const preview = !json && rawText ? ` | ${rawText.slice(0, 120)}` : '';
-            throw new Error(`${message}${preview}`);
-          } catch (error) {
-            appendGlobalLog(`Ошибка транскрибации id=${messageId}: ${error.message || error}`);
-            lastError = error;
-            break;
-          }
-        }
-
-        if (lastError) {
-          throw lastError;
-        }
-
-        throw new Error('Transcription endpoint not found (/api/transcribe.php).');
-      };
-
-      
       const requestNextQuestion = async () => {
         let lastError = null;
         for (const endpoint of generateEndpointCandidates) {
@@ -381,14 +324,6 @@ function e(?string $value): string
         throw new Error('Generation endpoint not found (/api/generate_question.php).');
       };
 
-      const escapeHtml = (value) => value.replace(/[&<>"']/g, (ch) => ({
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#039;'
-      })[ch]);
-      
       if (generateBtn) {
         generateBtn.addEventListener('click', async () => {
           generateBtn.disabled = true;
@@ -407,33 +342,6 @@ function e(?string $value): string
         });
       }
 
-      document.querySelectorAll('[data-transcribe-btn]').forEach((button) => {
-        button.addEventListener('click', async () => {
-          const row = button.closest('.message-item');
-          const textCell = row.querySelector('[data-text-cell]');
-          const statusNode = row.querySelector('[data-row-status]');
-          const messageId = button.dataset.id;
-
-          button.disabled = true;
-          textCell.innerHTML = '<span class="placeholder">Processing...</span>';
-          statusNode.textContent = '';
-          statusNode.className = 'row-status';
-
-          try {
-            const payload = await requestTranscription(messageId);
-            const safeText = escapeHtml(String(payload.text || ''));
-            textCell.innerHTML = safeText.replace(/\n/g, '<br>');
-            statusNode.textContent = 'Готово';
-            statusNode.className = 'row-status success';
-            appendGlobalLog(`Получен текст длиной ${safeText.length} символов для id=${messageId}`);
-          } catch (error) {
-            textCell.innerHTML = '<span class="placeholder">Текст пока отсутствует</span>';
-            statusNode.textContent = error.message || 'Ошибка транскрибации';
-            statusNode.className = 'row-status error';
-            button.disabled = false;
-          }
-        });
-      });
     })();
   </script>
 </body>
