@@ -28,6 +28,15 @@ Instructions:
    - builds on previous topics
    - pushes the candidate slightly out of comfort zone
    - encourages explanation, reasoning, and decision-making
+   - keeps a long-run balance of ~50/50 hard skills vs soft skills questions
+
+2.1 Topic balancing policy:
+   - Detect whether recent questions were mostly hard skills or mostly soft skills.
+   - If there were many hard skills questions recently, switch to a soft skills angle next.
+   - If there were many soft skills questions recently, switch to a hard skills angle next.
+   - You do NOT need to alternate strictly one-by-one.
+   - If the previous question naturally requires a useful interviewer-style follow-up, you may ask one more clarifying/deepening question in the same area.
+   - But if there is a feeling that one theme already has more than 2 questions, change the topic/theme.
 
 3. The question should:
    - be realistic for a fintech interview or work discussion
