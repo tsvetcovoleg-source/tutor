@@ -214,8 +214,6 @@ function e(?string $value): string
   <main class="layout">
     <section class="card">
       <h1>AI Voice Tutor</h1>
-      <p>Запишите ответ на финтех-интервью. Загрузка аудио работает через <code>/api/upload_audio.php</code>.</p>
-
       <div id="status" class="status" aria-live="polite">Ready</div>
 
       <div class="controls">
@@ -223,13 +221,10 @@ function e(?string $value): string
         <button id="stopBtn" type="button" disabled>Stop recording</button>
       </div>
 
-      <div class="hint">Microphone access requires HTTPS (or localhost in development).</div>
     </section>
 
     <section class="card">
       <h2>Сообщения и транскрибация</h2>
-      <p>Кнопка «Транскрибировать» активна только для записей без текста.</p>
-
       <?php if ($errorMessage !== null): ?>
         <div class="error-box"><?= e($errorMessage) ?></div>
       <?php endif; ?>
@@ -258,12 +253,6 @@ function e(?string $value): string
                 >Транскрибировать</button>
               </div>
               <div class="row-status" data-row-status></div>
-              <div class="log-box" data-row-log>
-                <strong>Лог транскрибации:</strong>
-                <ul>
-                  <li>Пока пусто</li>
-                </ul>
-              </div>
             </article>
           <?php endforeach; ?>
       </div>
@@ -361,41 +350,17 @@ function e(?string $value): string
         '"': '&quot;',
         "'": '&#039;'
       })[ch]);
-
-      const renderTrace = (container, trace) => {
-        if (!container) return;
-        const list = document.createElement('ul');
-        if (!Array.isArray(trace) || trace.length === 0) {
-          const item = document.createElement('li');
-          item.textContent = 'Нет деталей по шагам.';
-          list.appendChild(item);
-        } else {
-          trace.forEach((step) => {
-            const item = document.createElement('li');
-            const stage = step?.stage ? `[${step.stage}] ` : '';
-            const message = step?.message || 'Без сообщения';
-            const time = step?.time ? `${step.time} — ` : '';
-            item.textContent = `${time}${stage}${message}`;
-            list.appendChild(item);
-          });
-        }
-        container.innerHTML = '';
-        container.appendChild(list);
-      };
-
       document.querySelectorAll('[data-transcribe-btn]').forEach((button) => {
         button.addEventListener('click', async () => {
           const row = button.closest('.message-item');
           const textCell = row.querySelector('[data-text-cell]');
           const statusNode = row.querySelector('[data-row-status]');
-          const rowLogBox = row.querySelector('[data-row-log]');
           const messageId = button.dataset.id;
 
           button.disabled = true;
           textCell.innerHTML = '<span class="placeholder">Processing...</span>';
           statusNode.textContent = '';
           statusNode.className = 'row-status';
-          renderTrace(rowLogBox, [{ stage: 'frontend', message: 'Запрос отправлен, ждём ответ...' }]);
 
           try {
             const payload = await requestTranscription(messageId);
@@ -403,14 +368,12 @@ function e(?string $value): string
             textCell.innerHTML = safeText.replace(/\n/g, '<br>');
             statusNode.textContent = 'Готово';
             statusNode.className = 'row-status success';
-            renderTrace(rowLogBox, payload.trace || []);
             appendGlobalLog(`Получен текст длиной ${safeText.length} символов для id=${messageId}`);
           } catch (error) {
             textCell.innerHTML = '<span class="placeholder">Текст пока отсутствует</span>';
             statusNode.textContent = error.message || 'Ошибка транскрибации';
             statusNode.className = 'row-status error';
             button.disabled = false;
-            renderTrace(rowLogBox, [{ stage: 'frontend_error', message: error.message || 'Ошибка без текста' }]);
           }
         });
       });
