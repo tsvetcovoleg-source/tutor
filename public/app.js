@@ -18,6 +18,12 @@
     'api/upload_audio.php',
   ];
 
+  const TRANSCRIBE_ENDPOINT_CANDIDATES = [
+    '/api/transcribe.php',
+    '../api/transcribe.php',
+    'api/transcribe.php',
+  ];
+
   const setStatus = (text) => {
     statusEl.textContent = text;
   };
@@ -138,6 +144,46 @@
     throw new Error('Upload failed: API endpoint not found. Check server routing for /api/upload_audio.php');
   };
 
+
+  const requestAutoTranscription = async (messageId) => {
+    let lastError = null;
+
+    for (const endpoint of TRANSCRIBE_ENDPOINT_CANDIDATES) {
+      try {
+        log(`Автотранскрибация: пробуем ${endpoint} для id=${messageId}`);
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: Number(messageId) })
+        });
+
+        const { rawText, json } = await parseResponseBody(response);
+
+        if (response.ok && json && json.status === 'success') {
+          log(`Автотранскрибация завершена: id=${messageId}`);
+          return;
+        }
+
+        if (response.status === 404) {
+          continue;
+        }
+
+        const message = json?.message || response.statusText || 'Transcription failed';
+        const preview = !json && rawText ? ` | ${rawText.slice(0, 120)}` : '';
+        throw new Error(`${message}${preview}`);
+      } catch (error) {
+        lastError = error;
+        break;
+      }
+    }
+
+    if (lastError) {
+      throw lastError;
+    }
+
+    throw new Error('Transcription endpoint not found (/api/transcribe.php).');
+  };
+
   const resetUI = () => {
     startBtn.disabled = false;
     stopBtn.disabled = true;
@@ -182,7 +228,18 @@
           const blob = new Blob(audioChunks, { type: finalType });
           log(`Запись остановлена. Получено чанков: ${audioChunks.length}.`);
 
-          await uploadAudio(blob, ext);
+          const uploadResult = await uploadAudio(blob, ext);
+          const messageId = uploadResult?.json?.message_id;
+
+          if (messageId) {
+            setStatus('Transcribing...');
+            await requestAutoTranscription(messageId);
+            setStatus('Done');
+            window.location.reload();
+            return;
+          }
+
+          log('Автотранскрибация пропущена: не получен message_id.');
         } catch (error) {
           console.error(error);
           setStatus(`Error: ${error.message}`);
