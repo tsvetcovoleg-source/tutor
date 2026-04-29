@@ -43,7 +43,7 @@ function e(?string $value): string
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0f172a" />
-  <title>AI Voice Tutor</title>
+  <title>Your English Is Taking Off 🚀</title>
   <style>
     :root {
       --bg: #f1f5f9;
@@ -93,13 +93,6 @@ function e(?string $value): string
       line-height: 1.5;
     }
 
-    .status {
-      margin: 0 0 16px;
-      font-size: 1rem;
-      font-weight: 600;
-      min-height: 1.5rem;
-    }
-
     .controls {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -127,20 +120,24 @@ function e(?string $value): string
       outline-offset: 2px;
     }
 
-    #startBtn,
+    #recordBtn,
     #generateQuestionBtn {
       background: var(--primary);
     }
 
-    #startBtn:hover,
+    #recordBtn:hover,
     #generateQuestionBtn:hover:not(:disabled) {
       background: var(--primary-dark);
       transform: translateY(-1px);
     }
 
-    #stopBtn {
+    #recordBtn[data-state="recording"] {
       background: var(--danger);
       box-shadow: 0 10px 20px rgba(220, 38, 38, 0.2);
+    }
+
+    #recordBtn[data-state="recording"]:hover:not(:disabled) {
+      background: #b91c1c;
     }
 
     button:disabled {
@@ -286,8 +283,8 @@ function e(?string $value): string
 <body>
   <main class="layout">
     <section class="card">
-      <h1>AI Voice Tutor</h1>
-      <div id="status" class="status" aria-live="polite">Ready</div>
+      <h1>Your English Is Taking Off 🚀</h1>
+      <p>Keep going — every answer makes your English stronger.</p>
     </section>
 
     <section class="card">
@@ -308,20 +305,20 @@ function e(?string $value): string
             ?>
             <article class="message-item">
               <?php if ($questionText !== ''): ?>
-                <div class="text-cell" style="background:#e0e7ff;border-color:#c7d2fe;border-radius:16px 16px 16px 4px;margin-right:auto;margin-left:0;"><strong>Вопрос:</strong><br><?= nl2br(e($questionText)) ?></div>
+                <div class="text-cell" style="background:#e0e7ff;border-color:#c7d2fe;border-radius:16px 16px 16px 4px;margin-right:auto;margin-left:0;"><strong>Question:</strong><br><?= nl2br(e($questionText)) ?></div>
               <?php endif; ?>
               <div class="text-cell" data-text-cell><?php
                 if ($hasText) {
-                    echo '<strong>Ответ:</strong><br>' . nl2br(e(trim((string)$row['text'])));
+                    echo '<strong>Answer:</strong><br>' . nl2br(e(trim((string)$row['text'])));
                 } else {
-                    echo '<span class="placeholder">Ответ пока отсутствует</span>';
+                    echo '<span class="placeholder">No answer yet</span>';
                 }
               ?></div>
               <?php if ($textGrammar !== ''): ?>
-                <div class="text-cell" style="background:#ede9fe;border-color:#ddd6fe;border-radius:16px 16px 16px 4px;margin-right:auto;margin-left:0;"><strong>Интервьюер (грамотная формулировка):</strong><br><?= nl2br(e($textGrammar)) ?></div>
+                <div class="text-cell" style="background:#ede9fe;border-color:#ddd6fe;border-radius:16px 16px 16px 4px;margin-right:auto;margin-left:0;"><strong>Better English:</strong><br><?= nl2br(e($textGrammar)) ?></div>
               <?php endif; ?>
               <?php if (is_array($evaluation)): ?>
-                <div class="text-cell eval-cell" style="background:#fff7ed;border-color:#fed7aa;"><strong>Оценка:</strong><br>English Quality: <?= e((string)($evaluation['english_quality'] ?? '-')) ?><br>Clarity &amp; Structure: <?= e((string)($evaluation['clarity_structure'] ?? '-')) ?><br>Risk &amp; Decision Thinking: <?= e((string)($evaluation['risk_decision_thinking'] ?? '-')) ?><br>Stakeholder Thinking: <?= e((string)($evaluation['stakeholder_thinking'] ?? '-')) ?><br>Overall: <?= e((string)($evaluation['overall_score'] ?? '-')) ?><br><br><strong>Комментарий:</strong> <?= nl2br(e((string)($evaluation['improvement_comment'] ?? ''))) ?></div>
+                <div class="text-cell eval-cell" style="background:#fff7ed;border-color:#fed7aa;">English Quality: <?= e((string)($evaluation['english_quality'] ?? '-')) ?><br>Clarity &amp; Structure: <?= e((string)($evaluation['clarity_structure'] ?? '-')) ?><br>Risk &amp; Decision Thinking: <?= e((string)($evaluation['risk_decision_thinking'] ?? '-')) ?><br>Stakeholder Thinking: <?= e((string)($evaluation['stakeholder_thinking'] ?? '-')) ?><br>Overall: <?= e((string)($evaluation['overall_score'] ?? '-')) ?><br><br><?= nl2br(e((string)($evaluation['improvement_comment'] ?? ''))) ?></div>
               <?php endif; ?>
               <div class="row-status" data-row-status></div>
             </article>
@@ -337,15 +334,14 @@ function e(?string $value): string
       <div id="globalLog" class="log-box" aria-live="polite">
         <strong>Журнал действий:</strong>
         <ul id="globalLogList">
-          <li>Ожидание действий...</li>
+          <li>Waiting for your next step.</li>
         </ul>
       </div>
     </section>
 
     <section class="card bottom-panel">
       <div class="controls">
-        <button id="startBtn" type="button"><span class="icon">🎙️</span><span>Начать запись</span></button>
-        <button id="stopBtn" type="button" disabled><span class="icon">⏹️</span><span>Остановить</span></button>
+        <button id="recordBtn" type="button" data-state="idle"><span class="icon">🎙️</span><span>Start recording</span></button>
         <button id="generateQuestionBtn" type="button"><span class="icon">✨</span><span>Новый вопрос</span></button>
       </div>
     </section>
@@ -363,15 +359,13 @@ function e(?string $value): string
       ];
 
 
-      const nowLabel = () => new Date().toLocaleString('ru-RU', { hour12: false });
-
       const appendGlobalLog = (message) => {
         if (!globalLogList) return;
-        if (globalLogList.children.length === 1 && globalLogList.children[0].textContent === 'Ожидание действий...') {
+        if (globalLogList.children.length === 1 && globalLogList.children[0].textContent === 'Waiting for your next step.') {
           globalLogList.innerHTML = '';
         }
         const item = document.createElement('li');
-        item.textContent = `[${nowLabel()}] ${message}`;
+        item.textContent = message;
         globalLogList.appendChild(item);
       };
 
@@ -416,16 +410,16 @@ function e(?string $value): string
       if (generateBtn) {
         generateBtn.addEventListener('click', async () => {
           generateBtn.disabled = true;
-          appendGlobalLog('Запрос на генерацию следующего вопроса отправлен.');
+          appendGlobalLog('Creating a new question...');
           try {
             const payload = await requestNextQuestion();
             if (payload.prompt) {
-              appendGlobalLog('Промпт для Gemini: ' + String(payload.prompt));
+              appendGlobalLog('Question prompt prepared.');
             }
-            appendGlobalLog(`Вопрос сгенерирован (id=${payload.message_id}). Обновляем страницу.`);
+            appendGlobalLog('New question is ready. Refreshing...');
             window.location.reload();
           } catch (error) {
-            appendGlobalLog(`Ошибка генерации вопроса: ${error.message || error}`);
+            appendGlobalLog(`Could not create a new question: ${error.message || error}`);
             generateBtn.disabled = false;
           }
         });

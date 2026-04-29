@@ -1,7 +1,5 @@
 (() => {
-  const startBtn = document.getElementById('startBtn');
-  const stopBtn = document.getElementById('stopBtn');
-  const statusEl = document.getElementById('status');
+  const recordBtn = document.getElementById('recordBtn');
 
   let mediaRecorder = null;
   let audioChunks = [];
@@ -24,10 +22,7 @@
     'api/transcribe.php',
   ];
 
-  const setStatus = (text) => {
-    statusEl.textContent = text;
-  };
-  const log = (text) => {
+    const log = (text) => {
     if (typeof window.appLog === 'function') {
       window.appLog(text);
     }
@@ -114,24 +109,22 @@
   };
 
   const uploadAudio = async (blob, ext) => {
-    setStatus('Uploading...');
-    log(`Начата загрузка аудио (${blob.size} байт, .${ext}).`);
+    log(`Uploading audio (${blob.size} bytes, .${ext})...`);
 
     let lastError = null;
 
     for (const endpoint of API_ENDPOINT_CANDIDATES) {
       try {
-        log(`Пробуем endpoint загрузки: ${endpoint}`);
+        log(`Trying upload endpoint: ${endpoint}`);
         const result = await tryUploadToEndpoint(blob, ext, endpoint);
 
         if (result) {
-          setStatus('Done');
-          log(`Загрузка завершена успешно через ${endpoint}. message_id=${result.json?.message_id ?? 'unknown'}`);
+          log(`Upload completed via ${endpoint}.`);
           return result;
         }
       } catch (error) {
         lastError = error;
-        log(`Ошибка upload через ${endpoint}: ${error.message}`);
+        log(`Upload failed via ${endpoint}: ${error.message}`);
         // Hard failure from server (not 404), stop trying fallback paths.
         break;
       }
@@ -150,7 +143,7 @@
 
     for (const endpoint of TRANSCRIBE_ENDPOINT_CANDIDATES) {
       try {
-        log(`Автотранскрибация: пробуем ${endpoint} для id=${messageId}`);
+        log(`Trying transcription endpoint: ${endpoint}`);
         const response = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -160,7 +153,7 @@
         const { rawText, json } = await parseResponseBody(response);
 
         if (response.ok && json && json.status === 'success') {
-          log(`Автотранскрибация завершена: id=${messageId}`);
+          log('Transcription completed successfully.');
           return;
         }
 
@@ -184,21 +177,30 @@
     throw new Error('Transcription endpoint not found (/api/transcribe.php).');
   };
 
+  const setRecordButtonState = (isRecording) => {
+    if (!recordBtn) return;
+    if (isRecording) {
+      recordBtn.dataset.state = 'recording';
+      recordBtn.innerHTML = '<span class="icon">⏹️</span><span>Stop recording</span>';
+    } else {
+      recordBtn.dataset.state = 'idle';
+      recordBtn.innerHTML = '<span class="icon">🎙️</span><span>Start recording</span>';
+    }
+  };
+
   const resetUI = () => {
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
+    if (recordBtn) recordBtn.disabled = false;
+    setRecordButtonState(false);
   };
 
   const startRecording = async () => {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setStatus('Microphone not supported on this browser');
-        log('Браузер не поддерживает getUserMedia.');
+        log('Your browser does not support microphone recording.');
         return;
       }
 
-      setStatus('Requesting microphone permission...');
-      log('Запрошен доступ к микрофону.');
+      log('Requesting microphone access...');
 
       stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -209,7 +211,7 @@
       });
 
       selectedMimeType = pickMimeType();
-      log(`Выбран MIME type для записи: ${selectedMimeType || 'browser default'}`);
+      log(`Using recording format: ${selectedMimeType || 'browser default'}.`);
 
       const options = selectedMimeType ? { mimeType: selectedMimeType } : undefined;
       mediaRecorder = new MediaRecorder(stream, options);
@@ -226,24 +228,23 @@
           const finalType = selectedMimeType || 'audio/webm';
           const ext = mimeTypeToExt(finalType);
           const blob = new Blob(audioChunks, { type: finalType });
-          log(`Запись остановлена. Получено чанков: ${audioChunks.length}.`);
+          log('Recording stopped. Processing audio...');
 
           const uploadResult = await uploadAudio(blob, ext);
           const messageId = uploadResult?.json?.message_id;
 
           if (messageId) {
-            setStatus('Transcribing...');
+            log('Transcribing your answer...');
             await requestAutoTranscription(messageId);
-            setStatus('Done');
+            log('Done! Updating your history...');
             window.location.reload();
             return;
           }
 
-          log('Автотранскрибация пропущена: не получен message_id.');
+          log('Transcription skipped: missing message id.');
         } catch (error) {
           console.error(error);
-          setStatus(`Error: ${error.message}`);
-          log(`Ошибка после остановки записи: ${error.message}`);
+          log(`Something went wrong after stopping: ${error.message}`);
         } finally {
           cleanupStream();
           resetUI();
@@ -251,15 +252,14 @@
       });
 
       mediaRecorder.start();
-      startBtn.disabled = true;
-      stopBtn.disabled = false;
-      setStatus('Recording...');
-      log('Запись началась.');
+      if (recordBtn) recordBtn.disabled = false;
+      setRecordButtonState(true);
+      log('Recording started. Speak when you are ready.');
 
       clearTimeout(autoStopTimer);
       autoStopTimer = setTimeout(() => {
         if (mediaRecorder && mediaRecorder.state === 'recording') {
-          log(`Автостоп через ${MAX_SECONDS} секунд.`);
+          log(`Auto-stop reached after ${MAX_SECONDS} seconds.`);
           mediaRecorder.stop();
         }
       }, MAX_SECONDS * 1000);
@@ -267,19 +267,25 @@
       console.error(error);
       cleanupStream();
       resetUI();
-      setStatus(`Error: ${error.message}`);
-      log(`Ошибка старта записи: ${error.message}`);
+      log(`Could not start recording: ${error.message}`);
     }
   };
 
   const stopRecording = () => {
     if (mediaRecorder && mediaRecorder.state === 'recording') {
       clearTimeout(autoStopTimer);
-      log('Пользователь нажал Stop recording.');
+      log('Stopping recording...');
       mediaRecorder.stop();
     }
   };
 
-  startBtn.addEventListener('click', startRecording);
-  stopBtn.addEventListener('click', stopRecording);
+  if (recordBtn) {
+    recordBtn.addEventListener('click', () => {
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        stopRecording();
+      } else {
+        startRecording();
+      }
+    });
+  }
 })();
