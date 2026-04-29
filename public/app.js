@@ -21,6 +21,11 @@
   const setStatus = (text) => {
     statusEl.textContent = text;
   };
+  const log = (text) => {
+    if (typeof window.appLog === 'function') {
+      window.appLog(text);
+    }
+  };
 
   const pickMimeType = () => {
     const candidates = [
@@ -104,19 +109,23 @@
 
   const uploadAudio = async (blob, ext) => {
     setStatus('Uploading...');
+    log(`Начата загрузка аудио (${blob.size} байт, .${ext}).`);
 
     let lastError = null;
 
     for (const endpoint of API_ENDPOINT_CANDIDATES) {
       try {
+        log(`Пробуем endpoint загрузки: ${endpoint}`);
         const result = await tryUploadToEndpoint(blob, ext, endpoint);
 
         if (result) {
           setStatus('Done');
+          log(`Загрузка завершена успешно через ${endpoint}. message_id=${result.json?.message_id ?? 'unknown'}`);
           return result;
         }
       } catch (error) {
         lastError = error;
+        log(`Ошибка upload через ${endpoint}: ${error.message}`);
         // Hard failure from server (not 404), stop trying fallback paths.
         break;
       }
@@ -138,10 +147,12 @@
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         setStatus('Microphone not supported on this browser');
+        log('Браузер не поддерживает getUserMedia.');
         return;
       }
 
       setStatus('Requesting microphone permission...');
+      log('Запрошен доступ к микрофону.');
 
       stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -152,6 +163,7 @@
       });
 
       selectedMimeType = pickMimeType();
+      log(`Выбран MIME type для записи: ${selectedMimeType || 'browser default'}`);
 
       const options = selectedMimeType ? { mimeType: selectedMimeType } : undefined;
       mediaRecorder = new MediaRecorder(stream, options);
@@ -168,11 +180,13 @@
           const finalType = selectedMimeType || 'audio/webm';
           const ext = mimeTypeToExt(finalType);
           const blob = new Blob(audioChunks, { type: finalType });
+          log(`Запись остановлена. Получено чанков: ${audioChunks.length}.`);
 
           await uploadAudio(blob, ext);
         } catch (error) {
           console.error(error);
           setStatus(`Error: ${error.message}`);
+          log(`Ошибка после остановки записи: ${error.message}`);
         } finally {
           cleanupStream();
           resetUI();
@@ -183,10 +197,12 @@
       startBtn.disabled = true;
       stopBtn.disabled = false;
       setStatus('Recording...');
+      log('Запись началась.');
 
       clearTimeout(autoStopTimer);
       autoStopTimer = setTimeout(() => {
         if (mediaRecorder && mediaRecorder.state === 'recording') {
+          log(`Автостоп через ${MAX_SECONDS} секунд.`);
           mediaRecorder.stop();
         }
       }, MAX_SECONDS * 1000);
@@ -195,12 +211,14 @@
       cleanupStream();
       resetUI();
       setStatus(`Error: ${error.message}`);
+      log(`Ошибка старта записи: ${error.message}`);
     }
   };
 
   const stopRecording = () => {
     if (mediaRecorder && mediaRecorder.state === 'recording') {
       clearTimeout(autoStopTimer);
+      log('Пользователь нажал Stop recording.');
       mediaRecorder.stop();
     }
   };
