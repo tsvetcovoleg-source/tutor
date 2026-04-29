@@ -7,11 +7,27 @@ require __DIR__ . '/../api/db.php';
 
 $errorMessage = null;
 $messages = [];
+$currentPage = max(1, (int)($_GET['page'] ?? 1));
+$perPage = 5;
+$totalMessages = 0;
+$totalPages = 1;
 
 try {
     $pdo = db_connect($config);
-    $stmt = $pdo->query('SELECT id, question_text, text, created_at FROM messages ORDER BY created_at ASC, id ASC');
+    $countStmt = $pdo->query('SELECT COUNT(*) FROM messages');
+    $totalMessages = (int)$countStmt->fetchColumn();
+    $totalPages = max(1, (int)ceil($totalMessages / $perPage));
+    if ($currentPage > $totalPages) {
+        $currentPage = $totalPages;
+    }
+    $offset = ($currentPage - 1) * $perPage;
+
+    $stmt = $pdo->prepare('SELECT id, question_text, text, created_at FROM messages ORDER BY created_at DESC, id DESC LIMIT :limit OFFSET :offset');
+    $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
+    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $stmt->execute();
     $messages = $stmt->fetchAll();
+    $messages = array_reverse($messages);
 } catch (Throwable $e) {
     $errorMessage = 'Не удалось загрузить список сообщений.';
 }
@@ -86,18 +102,24 @@ function e(?string $value): string
 
     .controls {
       display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 12px;
-      max-width: 420px;
     }
 
     button {
-      border: none;
-      border-radius: 12px;
-      font-size: 0.96rem;
+      border: 1px solid transparent;
+      border-radius: 14px;
+      font-size: 0.95rem;
       font-weight: 700;
       color: white;
-      padding: 10px 14px;
+      padding: 12px 14px;
       cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 10px 20px rgba(2, 132, 199, 0.12);
+      transition: transform .15s ease, box-shadow .15s ease, background .2s ease;
     }
 
     button:focus-visible {
@@ -113,9 +135,13 @@ function e(?string $value): string
     #startBtn:hover,
     #generateQuestionBtn:hover:not(:disabled) {
       background: var(--primary-dark);
+      transform: translateY(-1px);
     }
 
-    #stopBtn { background: var(--danger); }
+    #stopBtn {
+      background: var(--danger);
+      box-shadow: 0 10px 20px rgba(220, 38, 38, 0.2);
+    }
 
     button:disabled {
       background: var(--disabled) !important;
@@ -201,12 +227,52 @@ function e(?string $value): string
       justify-content: flex-end;
     }
 
+    .pagination {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .page-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 38px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: #0f172a;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .page-link.active {
+      background: #dbeafe;
+      border-color: #93c5fd;
+      color: #1d4ed8;
+    }
+
+    .bottom-panel {
+      position: sticky;
+      bottom: 0;
+      z-index: 2;
+      background: rgba(241, 245, 249, 0.85);
+      backdrop-filter: blur(4px);
+    }
+
+    .icon {
+      font-size: 1.1rem;
+      line-height: 1;
+    }
+
     @media (max-width: 700px) {
       body { padding: 12px; }
       .card { padding: 14px; }
       .text-cell { max-width: 100%; font-size: 0.92rem; }
       button { width: 100%; }
-      .controls { max-width: none; }
+      .controls { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -215,13 +281,7 @@ function e(?string $value): string
     <section class="card">
       <h1>AI Voice Tutor</h1>
       <div id="status" class="status" aria-live="polite">Ready</div>
-
-      <div class="controls">
-        <button id="startBtn" type="button">Start speaking</button>
-        <button id="stopBtn" type="button" disabled>Stop recording</button>
-        <button id="generateQuestionBtn" type="button">Сгенерировать следующий вопрос</button>
-      </div>
-
+      <p>Показываются последние 5 итераций. Для старых сообщений используйте страницы ниже.</p>
     </section>
 
     <section class="card">
@@ -252,11 +312,26 @@ function e(?string $value): string
             </article>
           <?php endforeach; ?>
       </div>
+      <?php if ($totalPages > 1): ?>
+        <nav class="pagination" aria-label="Пагинация сообщений">
+          <?php for ($page = 1; $page <= $totalPages; $page++): ?>
+            <a class="page-link <?= $page === $currentPage ? 'active' : '' ?>" href="?page=<?= $page ?>">Страница <?= $page ?></a>
+          <?php endfor; ?>
+        </nav>
+      <?php endif; ?>
       <div id="globalLog" class="log-box" aria-live="polite">
         <strong>Журнал действий:</strong>
         <ul id="globalLogList">
           <li>Ожидание действий...</li>
         </ul>
+      </div>
+    </section>
+
+    <section class="card bottom-panel">
+      <div class="controls">
+        <button id="startBtn" type="button"><span class="icon">🎙️</span><span>Начать запись</span></button>
+        <button id="stopBtn" type="button" disabled><span class="icon">⏹️</span><span>Остановить</span></button>
+        <button id="generateQuestionBtn" type="button"><span class="icon">✨</span><span>Новый вопрос</span></button>
       </div>
     </section>
   </main>
