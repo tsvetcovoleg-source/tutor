@@ -22,7 +22,7 @@ try {
     }
     $offset = ($currentPage - 1) * $perPage;
 
-    $stmt = $pdo->prepare('SELECT id, question_text, text, created_at FROM messages ORDER BY created_at DESC, id DESC LIMIT :limit OFFSET :offset');
+    $stmt = $pdo->prepare('SELECT id, question_text, text, text_grammar, created_at FROM messages ORDER BY created_at DESC, id DESC LIMIT :limit OFFSET :offset');
     $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
     $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
     $stmt->execute();
@@ -295,6 +295,7 @@ function e(?string $value): string
             $id = (int)$row['id'];
             $hasText = trim((string)($row['text'] ?? '')) !== '';
             $questionText = trim((string)($row['question_text'] ?? ''));
+            $textGrammar = trim((string)($row['text_grammar'] ?? ''));
             ?>
             <article class="message-item">
               <?php if ($questionText !== ''): ?>
@@ -307,6 +308,9 @@ function e(?string $value): string
                     echo '<span class="placeholder">Ответ пока отсутствует</span>';
                 }
               ?></div>
+              <?php if ($textGrammar !== ''): ?>
+                <div class="text-cell" style="background:#ede9fe;border-color:#ddd6fe;border-radius:16px 16px 16px 4px;margin-right:auto;margin-left:0;"><strong>Интервьюер (грамотная формулировка):</strong><br><?= nl2br(e($textGrammar)) ?></div>
+              <?php endif; ?>
               <div class="row-status" data-row-status></div>
             </article>
           <?php endforeach; ?>
@@ -397,6 +401,8 @@ function e(?string $value): string
         if (lastError) throw lastError;
         throw new Error('Generation endpoint not found (/api/generate_question.php).');
       };
+
+      
 
       if (generateBtn) {
         generateBtn.addEventListener('click', async () => {
