@@ -131,6 +131,125 @@ PROMPT;
     add_trace($trace, 'gemini_grammar_success', 'Grammar formulation generated', ['length' => strlen($textGrammar)]);
     return $textGrammar;
 }
+
+function generate_evaluation_text(string $geminiApiKey, string $questionText, string $userAnswer, bool $debug, array &$trace): string
+{
+    $promptTemplate = <<<'PROMPT'
+You are a senior interviewer for a Credit Risk Business Lead role in an international fintech company.
+
+You will receive:
+
+1. Interview question
+2. Candidate answer
+
+Your task is to evaluate the candidate's answer.
+
+Evaluation criteria:
+
+1. English Quality
+   Evaluate grammar, vocabulary, fluency, and whether the answer sounds natural in a professional interview.
+
+2. Clarity & Structure
+   Evaluate whether the answer is clear, logically organized, easy to follow, and not too vague.
+
+3. Risk & Decision Thinking
+   Evaluate whether the candidate demonstrates credit risk logic, practical decision-making, risk-based judgment, and understanding of business trade-offs.
+
+4. Stakeholder Thinking
+   Evaluate whether the candidate considers product, business, risk, regulator, customer, or management perspectives where relevant.
+
+Scoring rules:
+
+* Give each criterion a score from 0 to 10.
+* Use one decimal if needed.
+* Calculate the overall score as the average of the four criteria.
+* Do not be too soft. Evaluate as a real fintech interviewer.
+* If the answer is too short or vague, reduce the score.
+
+Feedback rules:
+
+* Provide ONE общий комментарий (max 5 sentences).
+* Explain in simple, clear English.
+* Focus on how the answer can be improved to get a higher score.
+* Suggest what is missing (e.g., clearer structure, decision, risk logic, stakeholder view).
+* Do NOT rewrite the answer.
+* Do NOT provide a better answer.
+* Do NOT ask a new question.
+
+Output ONLY valid JSON in this format:
+
+{
+"english_quality": 0,
+"clarity_structure": 0,
+"risk_decision_thinking": 0,
+"stakeholder_thinking": 0,
+"overall_score": 0,
+"improvement_comment": "..."
+}
+
+Interview question:
+"""
+{{QUESTION}}
+"""
+
+Candidate answer:
+"""
+{{ANSWER}}
+"""
+PROMPT;
+
+    $prompt = str_replace(['{{QUESTION}}', '{{ANSWER}}'], [$questionText, $userAnswer], $promptTemplate);
+
+    $payload = [
+        'contents' => [[
+            'parts' => [
+                ['text' => $prompt],
+            ],
+        ]],
+        'generationConfig' => [
+            'temperature' => 0.2,
+            'maxOutputTokens' => 400,
+        ],
+    ];
+
+    $apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=' . urlencode($geminiApiKey);
+    $ch = curl_init($apiUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+        CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
+        CURLOPT_TIMEOUT => 90,
+    ]);
+
+    $apiResponse = curl_exec($ch);
+    $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    if ($apiResponse === false) {
+        fail('Gemini evaluation request failed', 502, $debug, ['curl_error' => $curlError], $trace, 'gemini_evaluation_transport');
+    }
+
+    $decoded = json_decode($apiResponse, true);
+    if (!is_array($decoded) || $httpCode >= 400) {
+        $apiError = is_array($decoded) ? (string)($decoded['error']['message'] ?? 'Gemini API error') : 'Invalid Gemini response';
+        fail('Gemini evaluation API error: ' . $apiError, 502, $debug, ['http_code' => $httpCode], $trace, 'gemini_evaluation_error');
+    }
+
+    $evaluationText = trim((string)($decoded['candidates'][0]['content']['parts'][0]['text'] ?? ''));
+    if ($evaluationText === '') {
+        fail('Gemini returned empty evaluation response', 502, $debug, [], $trace, 'gemini_evaluation_empty');
+    }
+
+    $evaluation = json_decode($evaluationText, true);
+    if (!is_array($evaluation)) {
+        fail('Gemini evaluation is not valid JSON', 502, $debug, ['raw' => $evaluationText], $trace, 'gemini_evaluation_invalid_json');
+    }
+
+    add_trace($trace, 'gemini_evaluation_success', 'Evaluation generated', ['keys' => array_keys($evaluation)]);
+    return json_encode($evaluation, JSON_UNESCAPED_UNICODE) ?: '{}';
+}
 add_trace($trace, 'request_received', 'Incoming request accepted', [
     'method' => $_SERVER['REQUEST_METHOD'] ?? null,
     'uri' => $_SERVER['REQUEST_URI'] ?? null,
@@ -161,7 +280,7 @@ add_trace($trace, 'config_api_key', 'Gemini key loaded from api/config.php');
 
 try {
     $pdo = db_connect($config);
-    $stmt = $pdo->prepare('SELECT id, text, audio_path FROM messages WHERE id = :id LIMIT 1');
+    $stmt = $pdo->prepare('SELECT id, question_text, text, audio_path FROM messages WHERE id = :id LIMIT 1');
     $stmt->execute([':id' => $id]);
     $message = $stmt->fetch();
 } catch (Throwable $e) {
@@ -304,12 +423,18 @@ if ($transcribedText === '') {
 add_trace($trace, 'gemini_response_text', 'Transcription text extracted', ['length' => strlen($transcribedText)]);
 
 $textGrammar = generate_grammar_text($geminiApiKey, $transcribedText, $debug, $trace);
+$questionText = trim((string)($message['question_text'] ?? ''));
+$evaluation = null;
+if ($questionText !== '') {
+    $evaluation = generate_evaluation_text($geminiApiKey, $questionText, $transcribedText, $debug, $trace);
+}
 
 try {
-    $update = $pdo->prepare('UPDATE messages SET text = :text, text_grammar = :text_grammar WHERE id = :id');
+    $update = $pdo->prepare('UPDATE messages SET text = :text, text_grammar = :text_grammar, evaluation = :evaluation WHERE id = :id');
     $update->execute([
         ':text' => $transcribedText,
         ':text_grammar' => $textGrammar,
+        ':evaluation' => $evaluation,
         ':id' => $id,
     ]);
 } catch (Throwable $e) {
@@ -322,5 +447,6 @@ respond([
     'id' => $id,
     'text' => $transcribedText,
     'text_grammar' => $textGrammar,
+    'evaluation' => $evaluation !== null ? json_decode($evaluation, true) : null,
     'trace' => $trace,
 ]);
