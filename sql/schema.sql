@@ -11,3 +11,6 @@ ALTER TABLE messages
 
 ALTER TABLE messages
   ADD COLUMN IF NOT EXISTS text_grammar TEXT NULL AFTER text;
+
+ALTER TABLE messages
+  ADD COLUMN IF NOT EXISTS evaluation TEXT NULL AFTER text_grammar;

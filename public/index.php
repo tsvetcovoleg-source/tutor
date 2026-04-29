@@ -22,7 +22,7 @@ try {
     }
     $offset = ($currentPage - 1) * $perPage;
 
-    $stmt = $pdo->prepare('SELECT id, question_text, text, text_grammar, created_at FROM messages ORDER BY created_at DESC, id DESC LIMIT :limit OFFSET :offset');
+    $stmt = $pdo->prepare('SELECT id, question_text, text, text_grammar, evaluation, created_at FROM messages ORDER BY created_at DESC, id DESC LIMIT :limit OFFSET :offset');
     $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
     $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
     $stmt->execute();
@@ -296,6 +296,8 @@ function e(?string $value): string
             $hasText = trim((string)($row['text'] ?? '')) !== '';
             $questionText = trim((string)($row['question_text'] ?? ''));
             $textGrammar = trim((string)($row['text_grammar'] ?? ''));
+            $evaluationRaw = trim((string)($row['evaluation'] ?? ''));
+            $evaluation = $evaluationRaw !== '' ? json_decode($evaluationRaw, true) : null;
             ?>
             <article class="message-item">
               <?php if ($questionText !== ''): ?>
@@ -310,6 +312,22 @@ function e(?string $value): string
               ?></div>
               <?php if ($textGrammar !== ''): ?>
                 <div class="text-cell" style="background:#ede9fe;border-color:#ddd6fe;border-radius:16px 16px 16px 4px;margin-right:auto;margin-left:0;"><strong>Интервьюер (грамотная формулировка):</strong><br><?= nl2br(e($textGrammar)) ?></div>
+              <?php endif; ?>
+              <?php if (is_array($evaluation)): ?>
+                <div class="text-cell" style="background:#fff7ed;border-color:#fed7aa;border-radius:16px 16px 16px 4px;margin-right:auto;margin-left:0;">
+                  <strong>Оценка:</strong><br>
+                  English Quality: <?= e((string)($evaluation['english_quality'] ?? '-')) ?><br>
+                  Clarity &amp; Structure: <?= e((string)($evaluation['clarity_structure'] ?? '-')) ?><br>
+                  Risk &amp; Decision Thinking: <?= e((string)($evaluation['risk_decision_thinking'] ?? '-')) ?><br>
+                  Stakeholder Thinking: <?= e((string)($evaluation['stakeholder_thinking'] ?? '-')) ?><br>
+                  Overall: <?= e((string)($evaluation['overall_score'] ?? '-')) ?><br><br>
+                  <strong>Комментарий:</strong> <?= nl2br(e((string)($evaluation['improvement_comment'] ?? ''))) ?>
+                </div>
+              <?php endif; ?>
+              <?php if ($hasText): ?>
+                <div class="actions">
+                  <button type="button" data-evaluate-btn data-message-id="<?= $id ?>">Оценить</button>
+                </div>
               <?php endif; ?>
               <div class="row-status" data-row-status></div>
             </article>
@@ -343,8 +361,14 @@ function e(?string $value): string
   <script>
     (() => {
       const globalLogList = document.getElementById('globalLogList');
+      const evaluateBtns = Array.from(document.querySelectorAll('[data-evaluate-btn]'));
 
       const generateBtn = document.getElementById('generateQuestionBtn');
+      const evaluateEndpointCandidates = [
+        '/api/evaluate_answer.php',
+        '../api/evaluate_answer.php',
+        'api/evaluate_answer.php'
+      ];
       const generateEndpointCandidates = [
         '/api/generate_question.php',
         '../api/generate_question.php',
@@ -401,6 +425,49 @@ function e(?string $value): string
         if (lastError) throw lastError;
         throw new Error('Generation endpoint not found (/api/generate_question.php).');
       };
+
+      const requestEvaluation = async (messageId) => {
+        let lastError = null;
+        for (const endpoint of evaluateEndpointCandidates) {
+          try {
+            const response = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: Number(messageId) })
+            });
+            const { rawText, json } = await parseResponseBody(response);
+            if (response.ok && json && json.status === 'success') {
+              return json;
+            }
+            if (response.status === 404) continue;
+            const message = json?.message || response.statusText || 'Evaluation failed';
+            const preview = !json && rawText ? ` | ${rawText.slice(0, 120)}` : '';
+            throw new Error(`${message}${preview}`);
+          } catch (error) {
+            lastError = error;
+            break;
+          }
+        }
+        if (lastError) throw lastError;
+        throw new Error('Evaluation endpoint not found (/api/evaluate_answer.php).');
+      };
+
+      evaluateBtns.forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const messageId = btn.getAttribute('data-message-id');
+          if (!messageId) return;
+          btn.disabled = true;
+          appendGlobalLog(`Отправляем оценку для ответа id=${messageId}.`);
+          try {
+            await requestEvaluation(messageId);
+            appendGlobalLog(`Оценка получена для ответа id=${messageId}. Обновляем страницу.`);
+            window.location.reload();
+          } catch (error) {
+            appendGlobalLog(`Ошибка оценки ответа id=${messageId}: ${error.message || error}`);
+            btn.disabled = false;
+          }
+        });
+      });
 
       
 
