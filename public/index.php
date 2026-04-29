@@ -22,7 +22,7 @@ try {
     }
     $offset = ($currentPage - 1) * $perPage;
 
-    $stmt = $pdo->prepare('SELECT id, question_text, text, text_grammar, created_at FROM messages ORDER BY created_at DESC, id DESC LIMIT :limit OFFSET :offset');
+    $stmt = $pdo->prepare('SELECT id, question_text, text, text_grammar, evaluation, created_at FROM messages ORDER BY created_at DESC, id DESC LIMIT :limit OFFSET :offset');
     $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
     $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
     $stmt->execute();
@@ -226,6 +226,13 @@ function e(?string $value): string
       display: flex;
       justify-content: flex-end;
     }
+    .eval-cell {
+      white-space: normal;
+      width: min(720px, 100%);
+      margin-left: 0;
+      margin-right: auto;
+      border-radius: 16px 16px 16px 4px;
+    }
 
     .pagination {
       display: flex;
@@ -296,6 +303,8 @@ function e(?string $value): string
             $hasText = trim((string)($row['text'] ?? '')) !== '';
             $questionText = trim((string)($row['question_text'] ?? ''));
             $textGrammar = trim((string)($row['text_grammar'] ?? ''));
+            $evaluationRaw = trim((string)($row['evaluation'] ?? ''));
+            $evaluation = $evaluationRaw !== '' ? json_decode($evaluationRaw, true) : null;
             ?>
             <article class="message-item">
               <?php if ($questionText !== ''): ?>
@@ -310,6 +319,9 @@ function e(?string $value): string
               ?></div>
               <?php if ($textGrammar !== ''): ?>
                 <div class="text-cell" style="background:#ede9fe;border-color:#ddd6fe;border-radius:16px 16px 16px 4px;margin-right:auto;margin-left:0;"><strong>Интервьюер (грамотная формулировка):</strong><br><?= nl2br(e($textGrammar)) ?></div>
+              <?php endif; ?>
+              <?php if (is_array($evaluation)): ?>
+                <div class="text-cell eval-cell" style="background:#fff7ed;border-color:#fed7aa;"><strong>Оценка:</strong><br>English Quality: <?= e((string)($evaluation['english_quality'] ?? '-')) ?><br>Clarity &amp; Structure: <?= e((string)($evaluation['clarity_structure'] ?? '-')) ?><br>Risk &amp; Decision Thinking: <?= e((string)($evaluation['risk_decision_thinking'] ?? '-')) ?><br>Stakeholder Thinking: <?= e((string)($evaluation['stakeholder_thinking'] ?? '-')) ?><br>Overall: <?= e((string)($evaluation['overall_score'] ?? '-')) ?><br><br><strong>Комментарий:</strong> <?= nl2br(e((string)($evaluation['improvement_comment'] ?? ''))) ?></div>
               <?php endif; ?>
               <div class="row-status" data-row-status></div>
             </article>
@@ -343,7 +355,6 @@ function e(?string $value): string
   <script>
     (() => {
       const globalLogList = document.getElementById('globalLogList');
-
       const generateBtn = document.getElementById('generateQuestionBtn');
       const generateEndpointCandidates = [
         '/api/generate_question.php',
@@ -401,8 +412,6 @@ function e(?string $value): string
         if (lastError) throw lastError;
         throw new Error('Generation endpoint not found (/api/generate_question.php).');
       };
-
-      
 
       if (generateBtn) {
         generateBtn.addEventListener('click', async () => {
