@@ -6,6 +6,7 @@ header('Content-Type: application/json; charset=utf-8');
 
 $config = require __DIR__ . '/config.php';
 require __DIR__ . '/db.php';
+$prompts = require __DIR__ . '/prompts.php';
 
 function respond(array $payload, int $statusCode = 200): void
 {
@@ -47,7 +48,12 @@ foreach ($recent as $row) {
 }
 
 $contextBlock = $interactionLines !== [] ? implode("\n", $interactionLines) : 'No prior interactions yet.';
-$prompt = "You are a senior interviewer for a fintech company.\n\nYour task is to generate the next interview question based on the candidate's recent answers.\n\nContext:\nBelow are the last 3–5 interview interactions, including:\n- question\n- candidate answer\n- improved professional answer\n- target phrases\n\n" . $contextBlock . "\n\nInstructions:\n1. Identify:\n   - weak areas in communication (lack of structure, vocabulary, clarity)\n   - missing professional phrases\n   - topics that were partially covered but not deeply explained\n\n2. Generate ONE new interview question that:\n   - stays within fintech / credit risk / lending / product context\n   - builds on previous topics\n   - pushes the candidate slightly out of comfort zone\n   - encourages explanation, reasoning, and decision-making\n\n3. The question should:\n   - be realistic for a fintech interview or work discussion\n   - include a follow-up angle (implicit or explicit)\n   - require a structured answer (not yes/no)\n\nOutput format (STRICT):\nReturn ONLY valid JSON and nothing else:\n{\"question\":\"<one complete interview question ending with ?>\",\"skill\":\"<one sentence about what this question targets>\"}";
+$promptTemplate = (string)($prompts['generate_question'] ?? '');
+if ($promptTemplate === '') {
+    respond(['status' => 'error', 'message' => 'Prompt template not configured'], 500);
+}
+
+$prompt = str_replace('{{CONTEXT_BLOCK}}', $contextBlock, $promptTemplate);
 
 $payload = [
     'contents' => [[

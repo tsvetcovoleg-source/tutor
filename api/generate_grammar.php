@@ -6,6 +6,7 @@ header('Content-Type: application/json; charset=utf-8');
 
 $config = require __DIR__ . '/config.php';
 require __DIR__ . '/db.php';
+$prompts = require __DIR__ . '/prompts.php';
 
 function respond(array $payload, int $statusCode = 200): void
 {
@@ -48,38 +49,13 @@ if ($userAnswer === '') {
     respond(['status' => 'error', 'message' => 'Message text is empty'], 400);
 }
 
-$prompt = <<<'PROMPT'
-You are a professional English editor with experience in fintech and credit risk.
+$promptTemplate = (string)($prompts['generate_grammar'] ?? '');
+if ($promptTemplate === '') {
+    respond(['status' => 'error', 'message' => 'Prompt template not configured'], 500);
+}
 
-Your task is to rewrite the user's answer in clear, correct, and professional English.
+$prompt = str_replace('{{USER_ANSWER}}', $userAnswer, $promptTemplate);
 
-STRICT RULES:
-
-* Do NOT add any new ideas, arguments, or examples.
-* Do NOT change the meaning.
-* Do NOT expand the content.
-* Only improve grammar, wording, and sentence structure.
-* Use standard financial and credit risk terminology where appropriate.
-* Prefer simple, clear, business-friendly language.
-* Avoid overly complex or academic vocabulary.
-* Keep the tone suitable for a fintech interview.
-
-OUTPUT RULE:
-
-* Return ONLY the corrected version.
-* Do NOT add explanations, comments, or formatting.
-* Do NOT include titles like "Corrected version".
-* Do NOT use bullet points.
-
----
-
-User answer:
-"""
-{{USER_ANSWER}}
-"""
-PROMPT;
-
-$prompt = str_replace('{{USER_ANSWER}}', $userAnswer, $prompt);
 
 $payload = [
     'contents' => [[
