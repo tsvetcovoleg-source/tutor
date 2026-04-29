@@ -10,7 +10,7 @@ $messages = [];
 
 try {
     $pdo = db_connect($config);
-    $stmt = $pdo->query('SELECT id, text, audio_path, created_at FROM messages ORDER BY created_at DESC, id DESC');
+    $stmt = $pdo->query('SELECT id, text, created_at FROM messages ORDER BY created_at ASC, id ASC');
     $messages = $stmt->fetchAll();
 } catch (Throwable $e) {
     $errorMessage = 'Не удалось загрузить список сообщений.';
@@ -138,28 +138,15 @@ function e(?string $value): string
       padding: 10px 12px;
     }
 
-    .table-wrap { overflow-x: auto; }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      min-width: 900px;
+    .messages-list {
+      display: grid;
+      gap: 14px;
     }
 
-    th, td {
-      border-bottom: 1px solid var(--border);
-      padding: 12px;
-      text-align: left;
-      vertical-align: top;
-      font-size: 0.95rem;
-    }
-
-    th {
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      font-size: 0.8rem;
-      color: var(--muted);
-      background: #f8fafc;
+    .message-item {
+      display: grid;
+      gap: 8px;
+      justify-items: end;
     }
 
     .placeholder {
@@ -168,9 +155,15 @@ function e(?string $value): string
     }
 
     .text-cell {
-      max-width: 470px;
+      max-width: min(720px, 100%);
       line-height: 1.45;
       white-space: pre-wrap;
+      background: #dcfce7;
+      border: 1px solid #bbf7d0;
+      border-radius: 16px 16px 4px 16px;
+      padding: 12px 14px;
+      width: fit-content;
+      margin-left: auto;
     }
 
     .row-status {
@@ -202,14 +195,25 @@ function e(?string $value): string
     .log-box li + li {
       margin-top: 6px;
     }
+
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    @media (max-width: 700px) {
+      body { padding: 12px; }
+      .card { padding: 14px; }
+      .text-cell { max-width: 100%; font-size: 0.92rem; }
+      button { width: 100%; }
+      .controls { max-width: none; }
+    }
   </style>
 </head>
 <body>
   <main class="layout">
     <section class="card">
       <h1>AI Voice Tutor</h1>
-      <p>Запишите ответ на финтех-интервью. Загрузка аудио работает через <code>/api/upload_audio.php</code>.</p>
-
       <div id="status" class="status" aria-live="polite">Ready</div>
 
       <div class="controls">
@@ -217,63 +221,29 @@ function e(?string $value): string
         <button id="stopBtn" type="button" disabled>Stop recording</button>
       </div>
 
-      <div class="hint">Microphone access requires HTTPS (or localhost in development).</div>
-      <div id="globalLog" class="log-box" aria-live="polite">
-        <strong>Журнал действий:</strong>
-        <ul id="globalLogList">
-          <li>Ожидание действий...</li>
-        </ul>
-      </div>
     </section>
 
     <section class="card">
       <h2>Сообщения и транскрибация</h2>
-      <p>Кнопка «Транскрибировать» активна только для записей без текста.</p>
-
       <?php if ($errorMessage !== null): ?>
         <div class="error-box"><?= e($errorMessage) ?></div>
       <?php endif; ?>
 
-      <div class="table-wrap">
-        <table>
-          <thead>
-          <tr>
-            <th>Дата</th>
-            <th>Аудио</th>
-            <th>Текст</th>
-            <th>Действие</th>
-          </tr>
-          </thead>
-          <tbody>
+      <div class="messages-list">
           <?php foreach ($messages as $row): ?>
             <?php
             $id = (int)$row['id'];
             $hasText = trim((string)($row['text'] ?? '')) !== '';
             ?>
-            <tr>
-              <td><?= e((string)$row['created_at']) ?></td>
-              <td>
-                <?php if (!empty($row['audio_path'])): ?>
-                  <audio controls preload="none" src="<?= e((string)$row['audio_path']) ?>"></audio>
-                <?php else: ?>
-                  <span class="placeholder">Нет аудио</span>
-                <?php endif; ?>
-              </td>
-              <td class="text-cell" data-text-cell>
-                <?php if ($hasText): ?>
-                  <?= nl2br(e((string)$row['text'])) ?>
-                <?php else: ?>
-                  <span class="placeholder">Текст пока отсутствует</span>
-                <?php endif; ?>
-                <div class="row-status" data-row-status></div>
-                <div class="log-box" data-row-log>
-                  <strong>Лог транскрибации:</strong>
-                  <ul>
-                    <li>Пока пусто</li>
-                  </ul>
-                </div>
-              </td>
-              <td>
+            <article class="message-item">
+              <div class="text-cell" data-text-cell><?php
+                if ($hasText) {
+                    echo nl2br(e(trim((string)$row['text'])));
+                } else {
+                    echo '<span class="placeholder">Текст пока отсутствует</span>';
+                }
+              ?></div>
+              <div class="actions">
                 <button
                   type="button"
                   class="btn-transcribe"
@@ -281,11 +251,16 @@ function e(?string $value): string
                   data-id="<?= $id ?>"
                   <?= $hasText ? 'disabled' : '' ?>
                 >Транскрибировать</button>
-              </td>
-            </tr>
+              </div>
+              <div class="row-status" data-row-status></div>
+            </article>
           <?php endforeach; ?>
-          </tbody>
-        </table>
+      </div>
+      <div id="globalLog" class="log-box" aria-live="polite">
+        <strong>Журнал действий:</strong>
+        <ul id="globalLogList">
+          <li>Ожидание действий...</li>
+        </ul>
       </div>
     </section>
   </main>
@@ -309,7 +284,7 @@ function e(?string $value): string
         }
         const item = document.createElement('li');
         item.textContent = `[${nowLabel()}] ${message}`;
-        globalLogList.prepend(item);
+        globalLogList.appendChild(item);
       };
 
       window.appLog = appendGlobalLog;
@@ -375,41 +350,17 @@ function e(?string $value): string
         '"': '&quot;',
         "'": '&#039;'
       })[ch]);
-
-      const renderTrace = (container, trace) => {
-        if (!container) return;
-        const list = document.createElement('ul');
-        if (!Array.isArray(trace) || trace.length === 0) {
-          const item = document.createElement('li');
-          item.textContent = 'Нет деталей по шагам.';
-          list.appendChild(item);
-        } else {
-          trace.forEach((step) => {
-            const item = document.createElement('li');
-            const stage = step?.stage ? `[${step.stage}] ` : '';
-            const message = step?.message || 'Без сообщения';
-            const time = step?.time ? `${step.time} — ` : '';
-            item.textContent = `${time}${stage}${message}`;
-            list.appendChild(item);
-          });
-        }
-        container.innerHTML = '';
-        container.appendChild(list);
-      };
-
       document.querySelectorAll('[data-transcribe-btn]').forEach((button) => {
         button.addEventListener('click', async () => {
-          const row = button.closest('tr');
+          const row = button.closest('.message-item');
           const textCell = row.querySelector('[data-text-cell]');
           const statusNode = row.querySelector('[data-row-status]');
-          const rowLogBox = row.querySelector('[data-row-log]');
           const messageId = button.dataset.id;
 
           button.disabled = true;
           textCell.innerHTML = '<span class="placeholder">Processing...</span>';
           statusNode.textContent = '';
           statusNode.className = 'row-status';
-          renderTrace(rowLogBox, [{ stage: 'frontend', message: 'Запрос отправлен, ждём ответ...' }]);
 
           try {
             const payload = await requestTranscription(messageId);
@@ -417,14 +368,12 @@ function e(?string $value): string
             textCell.innerHTML = safeText.replace(/\n/g, '<br>');
             statusNode.textContent = 'Готово';
             statusNode.className = 'row-status success';
-            renderTrace(rowLogBox, payload.trace || []);
             appendGlobalLog(`Получен текст длиной ${safeText.length} символов для id=${messageId}`);
           } catch (error) {
             textCell.innerHTML = '<span class="placeholder">Текст пока отсутствует</span>';
             statusNode.textContent = error.message || 'Ошибка транскрибации';
             statusNode.className = 'row-status error';
             button.disabled = false;
-            renderTrace(rowLogBox, [{ stage: 'frontend_error', message: error.message || 'Ошибка без текста' }]);
           }
         });
       });
