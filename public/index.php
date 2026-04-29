@@ -281,7 +281,6 @@ function e(?string $value): string
     <section class="card">
       <h1>AI Voice Tutor</h1>
       <div id="status" class="status" aria-live="polite">Ready</div>
-      <p>Показываются последние 5 итераций. Для старых сообщений используйте страницы ниже.</p>
     </section>
 
     <section class="card">
@@ -315,7 +314,7 @@ function e(?string $value): string
       <?php if ($totalPages > 1): ?>
         <nav class="pagination" aria-label="Пагинация сообщений">
           <?php for ($page = 1; $page <= $totalPages; $page++): ?>
-            <a class="page-link <?= $page === $currentPage ? 'active' : '' ?>" href="?page=<?= $page ?>">Страница <?= $page ?></a>
+            <a class="page-link <?= $page === $currentPage ? 'active' : '' ?>" href="?page=<?= $page ?>"><?= $page ?></a>
           <?php endfor; ?>
         </nav>
       <?php endif; ?>
