@@ -236,13 +236,13 @@ function e(?string $value): string
             $hasText = trim((string)($row['text'] ?? '')) !== '';
             ?>
             <article class="message-item">
-              <div class="text-cell" data-text-cell>
-                <?php if ($hasText): ?>
-                  <?= nl2br(e((string)$row['text'])) ?>
-                <?php else: ?>
-                  <span class="placeholder">Текст пока отсутствует</span>
-                <?php endif; ?>
-              </div>
+              <div class="text-cell" data-text-cell><?php
+                if ($hasText) {
+                    echo nl2br(e(trim((string)$row['text'])));
+                } else {
+                    echo '<span class="placeholder">Текст пока отсутствует</span>';
+                }
+              ?></div>
               <div class="actions">
                 <button
                   type="button"
