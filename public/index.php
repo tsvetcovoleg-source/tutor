@@ -10,7 +10,7 @@ $messages = [];
 
 try {
     $pdo = db_connect($config);
-    $stmt = $pdo->query('SELECT id, text, created_at FROM messages ORDER BY created_at ASC, id ASC');
+    $stmt = $pdo->query('SELECT id, question_text, text, created_at FROM messages ORDER BY created_at ASC, id ASC');
     $messages = $stmt->fetchAll();
 } catch (Throwable $e) {
     $errorMessage = 'Не удалось загрузить список сообщений.';
@@ -106,11 +106,13 @@ function e(?string $value): string
     }
 
     #startBtn,
+    #generateQuestionBtn,
     .btn-transcribe {
       background: var(--primary);
     }
 
     #startBtn:hover,
+    #generateQuestionBtn:hover:not(:disabled),
     .btn-transcribe:hover:not(:disabled) {
       background: var(--primary-dark);
     }
@@ -219,6 +221,7 @@ function e(?string $value): string
       <div class="controls">
         <button id="startBtn" type="button">Start speaking</button>
         <button id="stopBtn" type="button" disabled>Stop recording</button>
+        <button id="generateQuestionBtn" type="button">Сгенерировать следующий вопрос</button>
       </div>
 
     </section>
@@ -234,13 +237,17 @@ function e(?string $value): string
             <?php
             $id = (int)$row['id'];
             $hasText = trim((string)($row['text'] ?? '')) !== '';
+            $questionText = trim((string)($row['question_text'] ?? ''));
             ?>
             <article class="message-item">
+              <?php if ($questionText !== ''): ?>
+                <div class="text-cell" style="background:#e0e7ff;border-color:#c7d2fe;border-radius:16px 16px 16px 4px;margin-right:auto;margin-left:0;"><strong>Вопрос:</strong><br><?= nl2br(e($questionText)) ?></div>
+              <?php endif; ?>
               <div class="text-cell" data-text-cell><?php
                 if ($hasText) {
-                    echo nl2br(e(trim((string)$row['text'])));
+                    echo '<strong>Ответ:</strong><br>' . nl2br(e(trim((string)$row['text'])));
                 } else {
-                    echo '<span class="placeholder">Текст пока отсутствует</span>';
+                    echo '<span class="placeholder">Ответ пока отсутствует</span>';
                 }
               ?></div>
               <div class="actions">
@@ -274,6 +281,14 @@ function e(?string $value): string
         'api/transcribe.php'
       ];
       const globalLogList = document.getElementById('globalLogList');
+
+      const generateBtn = document.getElementById('generateQuestionBtn');
+      const generateEndpointCandidates = [
+        '/api/generate_question.php',
+        '../api/generate_question.php',
+        'api/generate_question.php'
+      ];
+
 
       const nowLabel = () => new Date().toLocaleString('ru-RU', { hour12: false });
 
@@ -343,6 +358,29 @@ function e(?string $value): string
         throw new Error('Transcription endpoint not found (/api/transcribe.php).');
       };
 
+      
+      const requestNextQuestion = async () => {
+        let lastError = null;
+        for (const endpoint of generateEndpointCandidates) {
+          try {
+            const response = await fetch(endpoint, { method: 'POST' });
+            const { rawText, json } = await parseResponseBody(response);
+            if (response.ok && json && json.status === 'success') {
+              return json;
+            }
+            if (response.status === 404) continue;
+            const message = json?.message || response.statusText || 'Generation failed';
+            const preview = !json && rawText ? ` | ${rawText.slice(0, 120)}` : '';
+            throw new Error(`${message}${preview}`);
+          } catch (error) {
+            lastError = error;
+            break;
+          }
+        }
+        if (lastError) throw lastError;
+        throw new Error('Generation endpoint not found (/api/generate_question.php).');
+      };
+
       const escapeHtml = (value) => value.replace(/[&<>"']/g, (ch) => ({
         '&': '&amp;',
         '<': '&lt;',
@@ -350,6 +388,25 @@ function e(?string $value): string
         '"': '&quot;',
         "'": '&#039;'
       })[ch]);
+      
+      if (generateBtn) {
+        generateBtn.addEventListener('click', async () => {
+          generateBtn.disabled = true;
+          appendGlobalLog('Запрос на генерацию следующего вопроса отправлен.');
+          try {
+            const payload = await requestNextQuestion();
+            if (payload.prompt) {
+              appendGlobalLog('Промпт для Gemini: ' + String(payload.prompt));
+            }
+            appendGlobalLog(`Вопрос сгенерирован (id=${payload.message_id}). Обновляем страницу.`);
+            window.location.reload();
+          } catch (error) {
+            appendGlobalLog(`Ошибка генерации вопроса: ${error.message || error}`);
+            generateBtn.disabled = false;
+          }
+        });
+      }
+
       document.querySelectorAll('[data-transcribe-btn]').forEach((button) => {
         button.addEventListener('click', async () => {
           const row = button.closest('.message-item');

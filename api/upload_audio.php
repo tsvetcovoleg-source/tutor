@@ -236,14 +236,26 @@ try {
 }
 
 try {
-    $stmt = $pdo->prepare('INSERT INTO messages (role, text, audio_path) VALUES (:role, :text, :audio_path)');
-    $stmt->execute([
-        ':role' => 'user',
-        ':text' => null,
-        ':audio_path' => $audioPath,
-    ]);
+    $pendingStmt = $pdo->query("SELECT id FROM messages WHERE question_text IS NOT NULL AND TRIM(question_text) <> '' AND text IS NULL ORDER BY created_at DESC, id DESC LIMIT 1");
+    $pending = $pendingStmt->fetch();
 
-    $messageId = (int)$pdo->lastInsertId();
+    if ($pending) {
+        $messageId = (int)$pending['id'];
+        $stmt = $pdo->prepare('UPDATE messages SET audio_path = :audio_path WHERE id = :id');
+        $stmt->execute([
+            ':audio_path' => $audioPath,
+            ':id' => $messageId,
+        ]);
+    } else {
+        $stmt = $pdo->prepare('INSERT INTO messages (role, question_text, text, audio_path) VALUES (:role, :question_text, :text, :audio_path)');
+        $stmt->execute([
+            ':role' => 'user',
+            ':question_text' => null,
+            ':text' => null,
+            ':audio_path' => $audioPath,
+        ]);
+        $messageId = (int)$pdo->lastInsertId();
+    }
 } catch (Throwable $e) {
     @unlink($destination);
     fail_with_stage('db_insert', 'Database insert failed', 500, $debugEnabled, [
