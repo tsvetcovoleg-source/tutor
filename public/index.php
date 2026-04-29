@@ -283,7 +283,7 @@ function e(?string $value): string
 <body>
   <main class="layout">
     <section class="card">
-      <h1>Your English Is Taking Off 🚀</h1>
+      <h1>Your English Is Taking Off 🚀 <a href="improvement.php" style="font-size:0.85rem;margin-left:8px;">Improvement</a></h1>
       <p>Keep going — every answer makes your English stronger.</p>
     </section>
 
