@@ -308,11 +308,6 @@ function e(?string $value): string
                     echo '<span class="placeholder">Ответ пока отсутствует</span>';
                 }
               ?></div>
-              <div class="actions">
-                <?php if ($hasText): ?>
-                  <button type="button" class="grammar-btn" data-message-id="<?= $id ?>">Сформулировать грамотно</button>
-                <?php endif; ?>
-              </div>
               <?php if ($textGrammar !== ''): ?>
                 <div class="text-cell" style="background:#ede9fe;border-color:#ddd6fe;border-radius:16px 16px 16px 4px;margin-right:auto;margin-left:0;"><strong>Интервьюер (грамотная формулировка):</strong><br><?= nl2br(e($textGrammar)) ?></div>
               <?php endif; ?>
@@ -408,56 +403,6 @@ function e(?string $value): string
       };
 
       
-
-      const grammarButtons = Array.from(document.querySelectorAll('.grammar-btn'));
-      const grammarEndpointCandidates = [
-        '/api/generate_grammar.php',
-        '../api/generate_grammar.php',
-        'api/generate_grammar.php'
-      ];
-
-      const requestGrammarRewrite = async (messageId) => {
-        let lastError = null;
-        for (const endpoint of grammarEndpointCandidates) {
-          try {
-            const response = await fetch(endpoint, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id: Number(messageId) })
-            });
-            const { rawText, json } = await parseResponseBody(response);
-            if (response.ok && json && json.status === 'success') {
-              return json;
-            }
-            if (response.status === 404) continue;
-            const message = json?.message || response.statusText || 'Grammar rewrite failed';
-            const preview = !json && rawText ? ` | ${rawText.slice(0, 120)}` : '';
-            throw new Error(`${message}${preview}`);
-          } catch (error) {
-            lastError = error;
-            break;
-          }
-        }
-        if (lastError) throw lastError;
-        throw new Error('Grammar endpoint not found (/api/generate_grammar.php).');
-      };
-
-      grammarButtons.forEach((button) => {
-        button.addEventListener('click', async () => {
-          const messageId = button.getAttribute('data-message-id');
-          if (!messageId) return;
-          button.disabled = true;
-          appendGlobalLog(`Запрос грамотной формулировки для ответа id=${messageId}.`);
-          try {
-            await requestGrammarRewrite(messageId);
-            appendGlobalLog(`Грамотная формулировка сохранена для id=${messageId}. Обновляем страницу.`);
-            window.location.reload();
-          } catch (error) {
-            appendGlobalLog(`Ошибка грамотной формулировки для id=${messageId}: ${error.message || error}`);
-            button.disabled = false;
-          }
-        });
-      });
 
       if (generateBtn) {
         generateBtn.addEventListener('click', async () => {

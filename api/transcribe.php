@@ -49,6 +49,88 @@ function fail(string $message, int $statusCode, bool $debug, array $context = []
     respond($payload, $statusCode);
 }
 
+
+
+function generate_grammar_text(string $geminiApiKey, string $userAnswer, bool $debug, array &$trace): string
+{
+    $promptTemplate = <<<'PROMPT'
+You are a professional English editor with experience in fintech and credit risk.
+
+Your task is to rewrite the user's answer in clear, correct, and professional English.
+
+STRICT RULES:
+
+* Do NOT add any new ideas, arguments, or examples.
+* Do NOT change the meaning.
+* Do NOT expand the content.
+* Only improve grammar, wording, and sentence structure.
+* Use standard financial and credit risk terminology where appropriate.
+* Prefer simple, clear, business-friendly language.
+* Avoid overly complex or academic vocabulary.
+* Keep the tone suitable for a fintech interview.
+
+OUTPUT RULE:
+
+* Return ONLY the corrected version.
+* Do NOT add explanations, comments, or formatting.
+* Do NOT include titles like "Corrected version".
+* Do NOT use bullet points.
+
+---
+
+User answer:
+"""
+{{USER_ANSWER}}
+"""
+PROMPT;
+
+    $prompt = str_replace('{{USER_ANSWER}}', $userAnswer, $promptTemplate);
+
+    $payload = [
+        'contents' => [[
+            'parts' => [
+                ['text' => $prompt],
+            ],
+        ]],
+        'generationConfig' => [
+            'temperature' => 0.2,
+            'maxOutputTokens' => 300,
+        ],
+    ];
+
+    $apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=' . urlencode($geminiApiKey);
+    $ch = curl_init($apiUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+        CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
+        CURLOPT_TIMEOUT => 90,
+    ]);
+
+    $apiResponse = curl_exec($ch);
+    $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    if ($apiResponse === false) {
+        fail('Gemini grammar request failed', 502, $debug, ['curl_error' => $curlError], $trace, 'gemini_grammar_transport');
+    }
+
+    $decoded = json_decode($apiResponse, true);
+    if (!is_array($decoded) || $httpCode >= 400) {
+        $apiError = is_array($decoded) ? (string)($decoded['error']['message'] ?? 'Gemini API error') : 'Invalid Gemini response';
+        fail('Gemini grammar API error: ' . $apiError, 502, $debug, ['http_code' => $httpCode], $trace, 'gemini_grammar_error');
+    }
+
+    $textGrammar = trim((string)($decoded['candidates'][0]['content']['parts'][0]['text'] ?? ''));
+    if ($textGrammar === '') {
+        fail('Gemini returned empty grammar response', 502, $debug, [], $trace, 'gemini_grammar_empty');
+    }
+
+    add_trace($trace, 'gemini_grammar_success', 'Grammar formulation generated', ['length' => strlen($textGrammar)]);
+    return $textGrammar;
+}
 add_trace($trace, 'request_received', 'Incoming request accepted', [
     'method' => $_SERVER['REQUEST_METHOD'] ?? null,
     'uri' => $_SERVER['REQUEST_URI'] ?? null,
@@ -221,20 +303,24 @@ if ($transcribedText === '') {
 }
 add_trace($trace, 'gemini_response_text', 'Transcription text extracted', ['length' => strlen($transcribedText)]);
 
+$textGrammar = generate_grammar_text($geminiApiKey, $transcribedText, $debug, $trace);
+
 try {
-    $update = $pdo->prepare('UPDATE messages SET text = :text WHERE id = :id');
+    $update = $pdo->prepare('UPDATE messages SET text = :text, text_grammar = :text_grammar WHERE id = :id');
     $update->execute([
         ':text' => $transcribedText,
+        ':text_grammar' => $textGrammar,
         ':id' => $id,
     ]);
 } catch (Throwable $e) {
-    fail('Database error while saving transcription', 500, $debug, ['error' => $e->getMessage()], $trace, 'db_update_transcription');
+    fail('Database error while saving transcription and grammar text', 500, $debug, ['error' => $e->getMessage()], $trace, 'db_update_transcription');
 }
-add_trace($trace, 'db_update_transcription', 'Transcription saved to DB', ['id' => $id]);
+add_trace($trace, 'db_update_transcription', 'Transcription and grammar text saved to DB', ['id' => $id]);
 
 respond([
     'status' => 'success',
     'id' => $id,
     'text' => $transcribedText,
+    'text_grammar' => $textGrammar,
     'trace' => $trace,
 ]);
