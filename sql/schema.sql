@@ -8,3 +8,6 @@ CREATE TABLE IF NOT EXISTS messages (
 
 ALTER TABLE messages
   ADD COLUMN IF NOT EXISTS question_text TEXT NULL AFTER role;
+
+ALTER TABLE messages
+  ADD COLUMN IF NOT EXISTS text_grammar TEXT NULL AFTER text;
