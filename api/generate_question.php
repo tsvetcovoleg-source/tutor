@@ -57,7 +57,7 @@ $payload = [
     ]],
 ];
 
-$apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . urlencode($geminiApiKey);
+$apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=' . urlencode($geminiApiKey);
 $ch = curl_init($apiUrl);
 curl_setopt_array($ch, [
     CURLOPT_POST => true,

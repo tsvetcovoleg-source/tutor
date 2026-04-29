@@ -182,7 +182,7 @@ $payload = [
     ]],
 ];
 
-$apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . urlencode($geminiApiKey);
+$apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=' . urlencode($geminiApiKey);
 add_trace($trace, 'gemini_request_prepare', 'Prepared Gemini request payload');
 
 $ch = curl_init($apiUrl);
