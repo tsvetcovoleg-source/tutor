@@ -15,6 +15,40 @@ function respond(array $payload, int $statusCode = 200): void
     exit;
 }
 
+function geminiGenerate(string $apiUrl, array $payload): array
+{
+    $ch = curl_init($apiUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+        CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
+        CURLOPT_TIMEOUT => 90,
+    ]);
+
+    $apiResponse = curl_exec($ch);
+    $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    if ($apiResponse === false) {
+        return ['ok' => false, 'message' => 'Gemini request failed: ' . $curlError];
+    }
+
+    $decoded = json_decode((string)$apiResponse, true);
+    if (!is_array($decoded) || $httpCode >= 400) {
+        $apiError = is_array($decoded) ? (string)($decoded['error']['message'] ?? 'Gemini API error') : 'Invalid Gemini response';
+        return ['ok' => false, 'message' => $apiError];
+    }
+
+    $modelText = trim((string)($decoded['candidates'][0]['content']['parts'][0]['text'] ?? ''));
+    if ($modelText === '') {
+        return ['ok' => false, 'message' => 'Gemini returned empty response'];
+    }
+
+    return ['ok' => true, 'text' => $modelText];
+}
+
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     respond(['status' => 'error', 'message' => 'Method not allowed'], 405);
 }
@@ -69,43 +103,53 @@ $payload = [
     ]],
     'generationConfig' => [
         'temperature' => 0.2,
-        'maxOutputTokens' => 400,
+        'maxOutputTokens' => 700,
     ],
 ];
 
 $apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=' . urlencode($geminiApiKey);
-$ch = curl_init($apiUrl);
-curl_setopt_array($ch, [
-    CURLOPT_POST => true,
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-    CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
-    CURLOPT_TIMEOUT => 90,
-]);
-
-$apiResponse = curl_exec($ch);
-$httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$curlError = curl_error($ch);
-curl_close($ch);
-
-if ($apiResponse === false) {
-    respond(['status' => 'error', 'message' => 'Gemini request failed: ' . $curlError], 502);
+$generationResult = geminiGenerate($apiUrl, $payload);
+if (!($generationResult['ok'] ?? false)) {
+    respond(['status' => 'error', 'message' => (string)($generationResult['message'] ?? 'Gemini API error')], 502);
 }
-
-$decoded = json_decode($apiResponse, true);
-if (!is_array($decoded) || $httpCode >= 400) {
-    $apiError = is_array($decoded) ? (string)($decoded['error']['message'] ?? 'Gemini API error') : 'Invalid Gemini response';
-    respond(['status' => 'error', 'message' => $apiError], 502);
-}
-
-$modelText = trim((string)($decoded['candidates'][0]['content']['parts'][0]['text'] ?? ''));
-if ($modelText === '') {
-    respond(['status' => 'error', 'message' => 'Gemini returned empty response'], 502);
-}
+$modelText = (string)$generationResult['text'];
 
 $evaluation = json_decode($modelText, true);
 if (!is_array($evaluation)) {
     respond(['status' => 'error', 'message' => 'Gemini did not return valid JSON', 'raw' => $modelText], 502);
+}
+
+if (trim((string)($evaluation['ideal_answer_example'] ?? '')) === '') {
+    $fallbackPrompt = <<<PROMPT
+You are a senior interviewer.
+Write one ideal answer example for this interview question.
+Rules:
+- 3-5 sentences
+- simple B1-B2 English
+- no academic terms
+- include: clear decision, short risk logic, one stakeholder point
+Return only the answer text.
+
+Interview question:
+{$questionText}
+PROMPT;
+
+    $fallbackPayload = [
+        'contents' => [[
+            'parts' => [
+                ['text' => $fallbackPrompt],
+            ],
+        ]],
+        'generationConfig' => [
+            'temperature' => 0.2,
+            'maxOutputTokens' => 220,
+        ],
+    ];
+
+    $fallbackResult = geminiGenerate($apiUrl, $fallbackPayload);
+    if ($fallbackResult['ok'] ?? false) {
+        $evaluation['ideal_answer_example'] = trim((string)$fallbackResult['text']);
+    }
 }
 
 try {
