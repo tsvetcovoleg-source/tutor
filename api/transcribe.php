@@ -172,9 +172,13 @@ Feedback rules:
 * Explain in simple, clear English.
 * Focus on how the answer can be improved to get a higher score.
 * Suggest what is missing (e.g., clearer structure, decision, risk logic, stakeholder view).
-* Do NOT rewrite the answer.
-* Do NOT provide a better answer.
 * Do NOT ask a new question.
+* Also provide ONE short example of an ideal answer to the same question:
+  - 3-5 sentences
+  - simple words and simple grammar (B1-B2 level)
+  - avoid academic terms
+  - practical and interview-friendly tone
+  - include: clear decision, short risk logic, one stakeholder point
 
 Output ONLY valid JSON in this format:
 
@@ -184,7 +188,8 @@ Output ONLY valid JSON in this format:
 "risk_decision_thinking": 0,
 "stakeholder_thinking": 0,
 "overall_score": 0,
-"improvement_comment": "..."
+"improvement_comment": "...",
+"ideal_answer_example": "..."
 }
 
 Interview question:
